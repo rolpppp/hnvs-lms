@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+/* Custom Utilities for PWA */
+body {
+  background-color: #f8fafc; /* slate-50 */
+  overscroll-behavior-y: none; /* Prevents "pull to refresh" on Android which can feel glitchy in PWAs */
+}
