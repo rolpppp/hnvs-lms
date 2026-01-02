@@ -1,63 +1,110 @@
-import { Routes, Route, HashRouter } from "react-router-dom";
-import Dashboard from "./pages/Dashboard";
-import CourseDetail from "./pages/CourseDetail";
-import { Wifi, WifiOff, RefreshCw } from "lucide-react";
-import { useSync } from "./hooks/useSync";
+import { Routes, Route, HashRouter, Link, useLocation } from 'react-router-dom';
+import { Wifi, WifiOff, RefreshCw, BookOpen, CheckCircle, User, LayoutDashboard } from 'lucide-react';
+import { useSync } from './hooks/useSync';
+import Dashboard from './pages/Dashboard';
+import CourseDetail from './pages/CourseDetail';
+import QuizPlayer from './pages/QuizPlayer';
+import TeacherDashboard from './pages/teachers/TeacherDashboard'; // <--- IMPORT
 
-// We create a Layout component to keep the Header/Nav persistent
 function Layout({ children }: { children: React.ReactNode }) {
   const { isOnline, isSyncing, pendingCount, triggerSync } = useSync();
+  const location = useLocation();
+  
+  // Check if we are in Teacher Mode
+  const isTeacherMode = location.pathname.includes('/teacher');
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      {/* GLOBAL HEADER */}
-      <header
-        className={`sticky top-0 z-50 text-white shadow-md transition-colors duration-300 ${
-          isOnline ? "bg-blue-900" : "bg-yellow-600"
-        }`}
-      >
+      
+      {/* HEADER */}
+      <header className={`sticky top-0 z-50 text-white shadow-md transition-colors duration-300 ${isOnline ? 'bg-blue-900' : 'bg-yellow-600'}`}>
         <div className="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          
+          {/* Logo / Home Link */}
+          <Link to="/" className="flex items-center gap-2">
             {isOnline ? <Wifi size={18} /> : <WifiOff size={18} />}
             <span className="text-sm font-semibold tracking-wide">
-              {isOnline ? "HNVS Online" : "Offline Mode"}
+              {isTeacherMode ? 'HNVS Instructor' : 'HNVS Student'}
             </span>
-          </div>
+          </Link>
 
           <div className="flex items-center gap-3">
-            {pendingCount > 0 && (
-              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                {pendingCount} Queued
-              </span>
-            )}
-            <button
+             {/* Role Switcher (For Prototype Demo Only) */}
+             <Link 
+               to={isTeacherMode ? "/" : "/teacher"} 
+               className="text-[10px] bg-white/20 px-2 py-1 rounded border border-white/30 hover:bg-white/30"
+             >
+               {isTeacherMode ? 'Switch to Student' : 'Switch to Teacher'}
+             </Link>
+
+             {/* Sync Badge (Only show for students usually, but kept for demo) */}
+             {!isTeacherMode && pendingCount > 0 && (
+               <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+                 {pendingCount}
+               </span>
+             )}
+            
+            <button 
               onClick={triggerSync}
               disabled={!isOnline || isSyncing}
               className="p-2 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50"
             >
-              <RefreshCw
-                size={18}
-                className={isSyncing ? "animate-spin" : ""}
-              />
+              <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
       </header>
 
-      {/* PAGE CONTENT */}
-      <main>{children}</main>
+      <main className="pb-20">
+        {children}
+      </main>
+
+      {/* BOTTOM NAV - Only show for STUDENTS */}
+      {!isTeacherMode && !location.pathname.includes('/quiz') && (
+        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 h-16 flex items-center justify-around z-40 max-w-md mx-auto">
+          <Link to="/" className="flex flex-col items-center gap-1 text-blue-900">
+            <BookOpen size={24} />
+            <span className="text-[10px] font-medium">Courses</span>
+          </Link>
+          <button className="flex flex-col items-center gap-1 text-slate-400">
+            <CheckCircle size={24} />
+            <span className="text-[10px] font-medium">Grades</span>
+          </button>
+          <button className="flex flex-col items-center gap-1 text-slate-400">
+            <User size={24} />
+            <span className="text-[10px] font-medium">Profile</span>
+          </button>
+        </nav>
+      )}
+
+      {/* BOTTOM NAV - Teacher Version (Optional) */}
+      {isTeacherMode && (
+        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 h-16 flex items-center justify-around z-40 max-w-md mx-auto">
+          <Link to="/teacher" className="flex flex-col items-center gap-1 text-blue-900">
+            <LayoutDashboard size={24} />
+            <span className="text-[10px] font-medium">Overview</span>
+          </Link>
+          <button className="flex flex-col items-center gap-1 text-slate-400">
+            <User size={24} />
+            <span className="text-[10px] font-medium">Students</span>
+          </button>
+        </nav>
+      )}
     </div>
   );
 }
 
 function App() {
   return (
-    // We use HashRouter because it's easier for PWAs hosted on static file servers
     <HashRouter>
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/course/:courseId" element={<CourseDetail />} />
+          <Route path="/quiz/:quizId" element={<QuizPlayer />} />
+          
+          {/* TEACHER ROUTES */}
+          <Route path="/teacher" element={<TeacherDashboard />} />
         </Routes>
       </Layout>
     </HashRouter>

@@ -1,4 +1,4 @@
-// src/App.tsx
+// src/pages/Dashboard.tsx
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import {
@@ -42,8 +42,8 @@ const SEED_COURSES: Course[] = [
   },
 ];
 
-function App() {
-  const { isOnline, isSyncing, pendingCount, triggerSync } = useSync();
+function Dashboard() {
+  const { isOnline } = useSync();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // 1. Fetch courses from Local DB (Dexie)
@@ -80,63 +80,27 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      {/* --- TOP HEADER (Network Status) --- */}
-      <header
-        className={`sticky top-0 z-50 text-white shadow-md transition-colors duration-300 ${
-          isOnline ? "bg-blue-900" : "bg-yellow-600"
-        }`}
-      >
-        <div className="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {isOnline ? <Wifi size={18} /> : <WifiOff size={18} />}
-            <span className="text-sm font-semibold tracking-wide">
-              {isOnline ? "HNVS Online" : "Offline Mode"}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Pending Sync Badge */}
-            {pendingCount > 0 && (
-              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                {pendingCount} Queued
-              </span>
-            )}
-
-            <button
-              onClick={triggerSync}
-              disabled={!isOnline || isSyncing}
-              className="p-2 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50"
-            >
-              <RefreshCw
-                size={18}
-                className={isSyncing ? "animate-spin" : ""}
-              />
-            </button>
-          </div>
-        </div>
-      </header>
-
+    <>
       {/* --- MAIN CONTENT --- */}
-      <main className="max-w-md mx-auto px-4 py-6 pb-24">
+      <main className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-6 pb-24 lg:pb-8">
         {/* User Greeting */}
-        <div className="mb-6 flex justify-between items-end">
+        <div className="mb-6 sm:mb-8 flex justify-between items-end">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">My Courses</h1>
-            <p className="text-slate-500 text-sm">Term 2, 2025</p>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-800">My Courses</h1>
+            <p className="text-slate-500 text-sm sm:text-base">Term 2, 2025</p>
           </div>
-          <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500">
-            <User size={20} />
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-200 rounded-full flex items-center justify-center text-slate-500">
+            <User size={20} className="sm:w-6 sm:h-6" />
           </div>
         </div>
 
         {/* Course Grid */}
         {!courses ? (
-          <div className="text-center py-10 text-slate-400">
+          <div className="text-center py-10 sm:py-16 text-slate-400">
             Loading courses...
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {courses.map((course: Course) => (
               <Link
                 to={`/course/${course.id}`}
@@ -156,23 +120,23 @@ function App() {
         )}
       </main>
 
-      {/* --- BOTTOM NAVIGATION (Mobile) --- */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 h-16 flex items-center justify-around z-40 max-w-md mx-auto">
+      {/* --- BOTTOM NAVIGATION (Mobile & Tablet Only) --- */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 h-16 flex items-center justify-around z-40 shadow-lg">
         <button className="flex flex-col items-center gap-1 text-blue-900">
           <BookOpen size={24} />
-          <span className="text-[10px] font-medium">Courses</span>
+          <span className="text-[10px] sm:text-xs font-medium">Courses</span>
         </button>
-        <button className="flex flex-col items-center gap-1 text-slate-400">
+        <button className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition-colors">
           <CheckCircle size={24} />
-          <span className="text-[10px] font-medium">Grades</span>
+          <span className="text-[10px] sm:text-xs font-medium">Grades</span>
         </button>
-        <button className="flex flex-col items-center gap-1 text-slate-400">
+        <button className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition-colors">
           <User size={24} />
-          <span className="text-[10px] font-medium">Profile</span>
+          <span className="text-[10px] sm:text-xs font-medium">Profile</span>
         </button>
       </nav>
-    </div>
+    </>
   );
 }
 
-export default App;
+export default Dashboard;
