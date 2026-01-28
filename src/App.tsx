@@ -1,13 +1,21 @@
 import { Routes, Route, HashRouter, Link, useLocation } from 'react-router-dom';
-import { Wifi, WifiOff, RefreshCw, BookOpen, CheckCircle, User, LayoutDashboard } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, BookOpen, CheckCircle, User, LayoutDashboard, Bell } from 'lucide-react';
 import { useSync } from './hooks/useSync';
+import { useNotifications } from './hooks/useNotifications';
 import Dashboard from './pages/Dashboard';
 import CourseDetail from './pages/CourseDetail';
 import QuizPlayer from './pages/QuizPlayer';
+import LessonViewer from './pages/LessonViewer';
+import StudentProgress from './pages/StudentProgress';
 import TeacherDashboard from './pages/teachers/TeacherDashboard'; // <--- IMPORT
+import AssignmentManager from './pages/teachers/AssignmentManager';
+import ContentUpload from './pages/teachers/ContentUpload';
+import AnnouncementManager from './pages/teachers/AnnouncementManager';
+import NotificationCenter from './pages/NotificationCenter';
 
 function Layout({ children }: { children: React.ReactNode }) {
   const { isOnline, isSyncing, pendingCount, triggerSync } = useSync();
+  const { unreadCount } = useNotifications();
   const location = useLocation();
   
   // Check if we are in Teacher Mode
@@ -36,6 +44,21 @@ function Layout({ children }: { children: React.ReactNode }) {
              >
                {isTeacherMode ? 'Switch to Student' : 'Switch to Teacher'}
              </Link>
+
+             {/* Notification Bell for Students */}
+             {!isTeacherMode && (
+               <Link
+                 to="/notifications"
+                 className="relative p-2 hover:bg-white/10 rounded-full transition-colors"
+               >
+                 <Bell size={18} />
+                 {unreadCount > 0 && (
+                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                     {unreadCount}
+                   </span>
+                 )}
+               </Link>
+             )}
 
              {/* Sync Badge (Only show for students usually, but kept for demo) */}
              {!isTeacherMode && pendingCount > 0 && (
@@ -66,10 +89,10 @@ function Layout({ children }: { children: React.ReactNode }) {
             <BookOpen size={24} />
             <span className="text-[10px] font-medium">Courses</span>
           </Link>
-          <button className="flex flex-col items-center gap-1 text-slate-400">
+          <Link to="/progress" className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600">
             <CheckCircle size={24} />
-            <span className="text-[10px] font-medium">Grades</span>
-          </button>
+            <span className="text-[10px] font-medium">Progress</span>
+          </Link>
           <button className="flex flex-col items-center gap-1 text-slate-400">
             <User size={24} />
             <span className="text-[10px] font-medium">Profile</span>
@@ -101,10 +124,16 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/course/:courseId" element={<CourseDetail />} />
+          <Route path="/lesson/:lessonId" element={<LessonViewer />} />
+          <Route path="/progress" element={<StudentProgress />} />
           <Route path="/quiz/:quizId" element={<QuizPlayer />} />
+          <Route path="/notifications" element={<NotificationCenter />} />
           
           {/* TEACHER ROUTES */}
           <Route path="/teacher" element={<TeacherDashboard />} />
+          <Route path="/teacher/assignments" element={<AssignmentManager />} />
+          <Route path="/teacher/upload" element={<ContentUpload />} />
+          <Route path="/teacher/announcements" element={<AnnouncementManager />} />
         </Routes>
       </Layout>
     </HashRouter>

@@ -2,16 +2,16 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import {
-  Wifi,
-  WifiOff,
-  RefreshCw,
   BookOpen,
   User,
   CheckCircle,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 import { CourseCard } from "../components/CourseCard";
 import { useSync } from "../hooks/useSync";
-import { db, type Course } from "../lib/db";
+import { useStorageWarning } from "../hooks/useStorageWarning";
+import { db, type Course, type Lesson } from "../lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 
 // --- DUMMY DATA SEEDER (Run once to populate DB) ---
@@ -23,27 +23,72 @@ const SEED_COURSES: Course[] = [
     description:
       "Learn to inspect, clean, and repair mechanical or electrical parts of light-duty diesel or gasoline engines.",
     isDownloaded: false,
+    totalLessons: 8,
+    estimatedHours: 12,
   },
   {
     id: "2",
     code: "COOK-NCII",
     title: "Commercial Cookery NC II",
     description:
-      "Fundamental skills in preparing and cooking hot and cold meals in a commercial kitchen environment.",
+      "Master the skills to prepare, cook, and present a variety of dishes for commercial food operations.",
     isDownloaded: false,
+    totalLessons: 10,
+    estimatedHours: 15,
   },
   {
     id: "3",
-    code: "EIM-NCII",
-    title: "Electrical Installation & Maintenance",
+    code: "ELEC-NCII",
+    title: "Electrical Installation & Maintenance NC II",
     description:
-      "Install and maintain electrical wiring, lighting, and related equipment and systems.",
+      "Develop competency in installing, maintaining, and troubleshooting electrical wiring systems.",
     isDownloaded: false,
+    totalLessons: 12,
+    estimatedHours: 18,
   },
+];
+
+const SEED_LESSONS: Lesson[] = [
+  // AUTO-NCII Lessons
+  { id: 'lesson-1-1', courseId: '1', title: 'Introduction to Automotive Safety', description: 'Learn fundamental safety protocols for automotive work', type: 'text', order: 1, duration: 15 },
+  { id: 'lesson-1-2', courseId: '1', title: 'Safety Equipment Demonstration', description: 'Video guide on proper use of safety equipment', type: 'video', order: 2, duration: 20 },
+  { id: 'lesson-1-3', courseId: '1', title: 'Basic Hand Tools', description: 'Introduction to common automotive hand tools', type: 'pdf', order: 3, duration: 25 },
+  { id: 'lesson-1-4', courseId: '1', title: 'Safety & Tools Quiz', description: 'Test your knowledge', type: 'quiz', order: 4, duration: 15, quizId: 'quiz-1' },
+  { id: 'lesson-1-5', courseId: '1', title: 'Engine Components Overview', description: 'Understanding engine parts and their functions', type: 'video', order: 5, duration: 30 },
+  { id: 'lesson-1-6', courseId: '1', title: 'Engine Inspection Procedures', description: 'Step-by-step guide to engine inspection', type: 'text', order: 6, duration: 20 },
+  { id: 'lesson-1-7', courseId: '1', title: 'Maintenance Checklist', description: 'Complete automotive maintenance guide', type: 'pdf', order: 7, duration: 15 },
+  { id: 'lesson-1-8', courseId: '1', title: 'Module Assessment', description: 'Final module quiz', type: 'quiz', order: 8, duration: 20, quizId: 'quiz-2' },
+
+  // COOK-NCII Lessons
+  { id: 'lesson-2-1', courseId: '2', title: 'Kitchen Safety & Hygiene', description: 'Food safety fundamentals', type: 'text', order: 1, duration: 20 },
+  { id: 'lesson-2-2', courseId: '2', title: 'Knife Skills Basics', description: 'Video demonstration of cutting techniques', type: 'video', order: 2, duration: 25 },
+  { id: 'lesson-2-3', courseId: '2', title: 'Recipe Reading & Measurement', description: 'Understanding culinary measurements', type: 'pdf', order: 3, duration: 15 },
+  { id: 'lesson-2-4', courseId: '2', title: 'Basics Quiz', description: 'Test your foundation knowledge', type: 'quiz', order: 4, duration: 15, quizId: 'quiz-1' },
+  { id: 'lesson-2-5', courseId: '2', title: 'Cooking Methods', description: 'Overview of cooking techniques', type: 'text', order: 5, duration: 30 },
+  { id: 'lesson-2-6', courseId: '2', title: 'Stock & Sauce Preparation', description: 'Video guide to making stocks and sauces', type: 'video', order: 6, duration: 35 },
+  { id: 'lesson-2-7', courseId: '2', title: 'Plating & Presentation', description: 'Guide to professional plating', type: 'pdf', order: 7, duration: 20 },
+  { id: 'lesson-2-8', courseId: '2', title: 'Menu Planning', description: 'Creating balanced menus', type: 'text', order: 8, duration: 25 },
+  { id: 'lesson-2-9', courseId: '2', title: 'Cost Control', description: 'Managing food costs', type: 'pdf', order: 9, duration: 20 },
+  { id: 'lesson-2-10', courseId: '2', title: 'Final Assessment', description: 'Comprehensive cookery quiz', type: 'quiz', order: 10, duration: 25, quizId: 'quiz-2' },
+
+  // ELEC-NCII Lessons
+  { id: 'lesson-3-1', courseId: '3', title: 'Electrical Safety Protocols', description: 'Critical safety rules for electrical work', type: 'text', order: 1, duration: 20 },
+  { id: 'lesson-3-2', courseId: '3', title: 'Understanding Electricity', description: 'Voltage, current, and resistance basics', type: 'video', order: 2, duration: 30 },
+  { id: 'lesson-3-3', courseId: '3', title: 'Circuit Theory', description: 'Series and parallel circuits explained', type: 'pdf', order: 3, duration: 25 },
+  { id: 'lesson-3-4', courseId: '3', title: 'Theory Quiz', description: 'Test your understanding', type: 'quiz', order: 4, duration: 15, quizId: 'quiz-1' },
+  { id: 'lesson-3-5', courseId: '3', title: 'Wiring Tools & Materials', description: 'Guide to electrical tools', type: 'video', order: 5, duration: 25 },
+  { id: 'lesson-3-6', courseId: '3', title: 'Reading Electrical Plans', description: 'Understanding blueprints and schematics', type: 'pdf', order: 6, duration: 30 },
+  { id: 'lesson-3-7', courseId: '3', title: 'Basic Wiring Installation', description: 'Step-by-step wiring procedures', type: 'text', order: 7, duration: 35 },
+  { id: 'lesson-3-8', courseId: '3', title: 'Installation Demo', description: 'Video walkthrough of installation', type: 'video', order: 8, duration: 40 },
+  { id: 'lesson-3-9', courseId: '3', title: 'Troubleshooting Techniques', description: 'Finding and fixing electrical problems', type: 'pdf', order: 9, duration: 30 },
+  { id: 'lesson-3-10', courseId: '3', title: 'Maintenance Procedures', description: 'Regular electrical maintenance', type: 'text', order: 10, duration: 25 },
+  { id: 'lesson-3-11', courseId: '3', title: 'Code Compliance', description: 'Understanding electrical codes', type: 'pdf', order: 11, duration: 20 },
+  { id: 'lesson-3-12', courseId: '3', title: 'Final Certification Exam', description: 'Comprehensive assessment', type: 'quiz', order: 12, duration: 30, quizId: 'quiz-2' },
 ];
 
 function Dashboard() {
   const { isOnline } = useSync();
+  const { storageInfo, showWarning, setShowWarning, canDownload } = useStorageWarning();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // 1. Fetch courses from Local DB (Dexie)
@@ -53,10 +98,21 @@ function Dashboard() {
   // 2. Seeder Effect: If DB is empty, add dummy data
   useEffect(() => {
     const seed = async () => {
-      const count = await db.courses.count();
-      if (count === 0) {
-        await db.courses.bulkAdd(SEED_COURSES);
-        console.log("Seeded Dummy Data");
+      try {
+        const courseCount = await db.courses.count();
+        if (courseCount === 0) {
+          await db.courses.bulkAdd(SEED_COURSES);
+          console.log("Seeded Courses");
+        }
+        
+        const lessonCount = await db.lessons.count();
+        if (lessonCount === 0) {
+          await db.lessons.bulkAdd(SEED_LESSONS);
+          console.log("Seeded Lessons");
+        }
+      } catch (error) {
+        // Ignore errors if data already exists
+        console.log("Seeding skipped - data already exists");
       }
     };
     seed();
@@ -66,6 +122,16 @@ function Dashboard() {
   const handleDownload = async (courseId: string) => {
     if (!isOnline) {
       alert("You need internet to download the initial pack!");
+      return;
+    }
+
+    // Check storage before downloading
+    const course = courses?.find(c => c.id === courseId);
+    const estimatedSizeMB = 20; // Estimate ~20MB per course pack
+    
+    const storageCheck = await canDownload(estimatedSizeMB);
+    if (!storageCheck.canDownload) {
+      alert(storageCheck.reason || "Not enough storage space");
       return;
     }
 
@@ -81,6 +147,31 @@ function Dashboard() {
 
   return (
     <>
+      {/* Storage Warning Banner */}
+      {showWarning && storageInfo && storageInfo.isLow && (
+        <div className={`fixed top-14 left-0 right-0 z-50 ${storageInfo.isCritical ? 'bg-red-600' : 'bg-yellow-600'} text-white px-4 py-3 shadow-lg`}>
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle size={20} />
+              <div className="text-sm">
+                <p className="font-bold">
+                  {storageInfo.isCritical ? 'Storage Critically Low!' : 'Storage Running Low'}
+                </p>
+                <p className="text-xs opacity-90">
+                  {storageInfo.used}MB used of {storageInfo.quota}MB ({100 - storageInfo.percentage}% remaining)
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setShowWarning(false)}
+              className="p-1 hover:bg-white/20 rounded"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* --- MAIN CONTENT --- */}
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-6 pb-24 lg:pb-8">
         {/* User Greeting */}

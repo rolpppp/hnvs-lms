@@ -1,14 +1,16 @@
 // src/pages/teacher/TeacherDashboard.tsx
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Users, 
   CloudRain, 
   AlertTriangle, 
-  Search, 
-  MoreVertical,
+  Search,
   FileText,
   CheckCircle,
-  Clock
+  Calendar,
+  Download,
+  Bell
 } from 'lucide-react';
 
 // --- MOCK DATA FOR PROTOTYPE ---
@@ -22,6 +24,37 @@ const MOCK_STUDENTS = [
 
 export default function TeacherDashboard() {
   const [filter, setFilter] = useState('');
+
+  const exportToCSV = () => {
+    // Generate CSV content
+    const headers = ['Student Name', 'Course', 'Last Synced', 'Status', 'Grade'];
+    const rows = MOCK_STUDENTS.map(student => [
+      student.name,
+      student.course,
+      student.lastSynced,
+      student.status,
+      student.grade.toString()
+    ]);
+
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `student-scores-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="pb-24 p-4 max-w-4xl mx-auto">
@@ -66,16 +99,25 @@ export default function TeacherDashboard() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         
         {/* Table Toolbar */}
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center gap-2">
+        <div className="p-4 border-b border-slate-100 flex justify-between items-center gap-2 flex-wrap">
           <h2 className="font-bold text-slate-800">Student Progress</h2>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input 
-              type="text" 
-              placeholder="Search student..." 
-              className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
-              onChange={(e) => setFilter(e.target.value)}
-            />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+            >
+              <Download size={16} />
+              Export CSV
+            </button>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input 
+                type="text" 
+                placeholder="Search student..." 
+                className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                onChange={(e) => setFilter(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 
@@ -137,17 +179,54 @@ export default function TeacherDashboard() {
       </div>
 
       {/* 4. CONTENT UPLOAD CTA */}
-      <div className="mt-6 bg-blue-900 rounded-xl p-6 text-white flex justify-between items-center shadow-lg">
-        <div>
-          <h3 className="font-bold text-lg">Create Course Pack</h3>
-          <p className="text-blue-200 text-sm max-w-xs mt-1">
-            Upload materials and we will automatically generate a "Lite Version" for offline students.
-          </p>
-        </div>
-        <button className="bg-white text-blue-900 px-4 py-3 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-blue-50 transition-colors">
-          <FileText size={18} />
-          Upload
-        </button>
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Link
+          to="/teacher/upload"
+          className="bg-blue-900 rounded-xl p-6 text-white shadow-lg hover:bg-blue-800 transition-colors block"
+        >
+          <div>
+            <h3 className="font-bold text-lg">Create Course Pack</h3>
+            <p className="text-blue-200 text-sm max-w-xs mt-1">
+              Upload materials with Lite Version generation.
+            </p>
+          </div>
+          <div className="mt-4 inline-flex bg-white text-blue-900 px-4 py-3 rounded-lg font-bold text-sm items-center gap-2">
+            <FileText size={18} />
+            Upload
+          </div>
+        </Link>
+
+        <Link 
+          to="/teacher/assignments"
+          className="bg-green-600 rounded-xl p-6 text-white shadow-lg hover:bg-green-700 transition-colors block"
+        >
+          <div>
+            <h3 className="font-bold text-lg">Manage Assignments</h3>
+            <p className="text-green-100 text-sm max-w-xs mt-1">
+              Set sync deadlines for offline students.
+            </p>
+          </div>
+          <div className="mt-4 inline-flex bg-white text-green-600 px-4 py-3 rounded-lg font-bold text-sm items-center gap-2">
+            <Calendar size={18} />
+            Open Manager
+          </div>
+        </Link>
+
+        <Link 
+          to="/teacher/announcements"
+          className="bg-orange-600 rounded-xl p-6 text-white shadow-lg hover:bg-orange-700 transition-colors block"
+        >
+          <div>
+            <h3 className="font-bold text-lg">Send Announcements</h3>
+            <p className="text-orange-100 text-sm max-w-xs mt-1">
+              Push urgent notifications to students.
+            </p>
+          </div>
+          <div className="mt-4 inline-flex bg-white text-orange-600 px-4 py-3 rounded-lg font-bold text-sm items-center gap-2">
+            <Bell size={18} />
+            Create
+          </div>
+        </Link>
       </div>
 
     </div>

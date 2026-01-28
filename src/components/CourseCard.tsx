@@ -1,4 +1,3 @@
-// src/components/CourseCard.tsx
 import { Download, CheckCircle, Clock } from "lucide-react";
 import type { Course } from "../lib/db";
 

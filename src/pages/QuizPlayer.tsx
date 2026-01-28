@@ -1,9 +1,10 @@
 // src/pages/QuizPlayer.tsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, Save, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Save } from 'lucide-react';
 import { db } from '../lib/db';
 import { useSync } from '../hooks/useSync';
+import { getStudentUUID, getOrCreateUUIDForId } from '../lib/uuid';
 
 // --- MOCK DATA (Ideally this comes from db.quizzes) ---
 const MOCK_QUIZ = {
@@ -76,8 +77,8 @@ export default function QuizPlayer() {
     // 2. Save to Offline DB (Dexie)
     try {
       await db.quizAttempts.add({
-        quizId: quizId || 'unknown',
-        studentId: 'student-1', // Mock User ID
+        quizId: getOrCreateUUIDForId(quizId || 'quiz-1'), // Convert to UUID
+        studentId: getStudentUUID(), // Use consistent UUID for student
         answers: answers,
         score: finalScore,
         timestamp: Date.now(),
