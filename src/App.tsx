@@ -1,5 +1,10 @@
-import { Routes, Route, HashRouter, Link, useLocation } from 'react-router-dom';
-import { Wifi, WifiOff, RefreshCw, BookOpen, CheckCircle, User, LayoutDashboard, Bell } from 'lucide-react';
+import { Routes, Route, HashRouter, Link, useLocation, Navigate } from 'react-router-dom';
+import { Wifi, WifiOff, RefreshCw, BookOpen, CheckCircle, User, LayoutDashboard, Bell, LogOut } from 'lucide-react';
+import { useAuth } from './features/auth/AuthProvider';
+import { RequireAuth } from './features/auth/RequireAuth';
+import { RequireRole } from './features/auth/RequireRole';
+import SignInPage from './features/auth/SignInPage';
+import SignUpPage from './features/auth/SignUpPage';
 import { useSync } from './hooks/useSync';
 import { useNotifications } from './hooks/useNotifications';
 import Dashboard from './pages/Dashboard';
@@ -7,7 +12,7 @@ import CourseDetail from './pages/CourseDetail';
 import QuizPlayer from './pages/QuizPlayer';
 import LessonViewer from './pages/LessonViewer';
 import StudentProgress from './pages/StudentProgress';
-import TeacherDashboard from './pages/teachers/TeacherDashboard'; // <--- IMPORT
+import TeacherDashboard from './pages/teachers/TeacherDashboard';
 import AssignmentManager from './pages/teachers/AssignmentManager';
 import ContentUpload from './pages/teachers/ContentUpload';
 import AnnouncementManager from './pages/teachers/AnnouncementManager';
@@ -16,10 +21,11 @@ import NotificationCenter from './pages/NotificationCenter';
 function Layout({ children }: { children: React.ReactNode }) {
   const { isOnline, isSyncing, pendingCount, triggerSync } = useSync();
   const { unreadCount } = useNotifications();
+  const { profile, signOut } = useAuth();
   const location = useLocation();
   
-  // Check if we are in Teacher Mode
-  const isTeacherMode = location.pathname.includes('/teacher');
+  // Check if we are in Teacher Mode based on actual role
+  const isTeacherMode = profile?.role === 'teacher';
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -36,13 +42,21 @@ function Layout({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
 
-          <div className="flex items-center gap-3">
-             {/* Role Switcher (For Prototype Demo Only) */}
-             <Link 
-               to={isTeacherMode ? "/" : "/teacher"} 
-               className="text-[10px] bg-white/20 px-2 py-1 rounded border border-white/30 hover:bg-white/30"
-             >
-               {isTeacherMode ? 'Switch to Student' : 'Switch to Teacher'}
+          <div clUser Info & Sign Out */}
+             {profile && (
+               <div className="flex items-center gap-2">
+                 <span className="text-[10px] bg-white/20 px-2 py-1 rounded">
+                   {profile.full_name || 'User'}
+                 </span>
+                 <button
+                   onClick={signOut}
+                   className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                   title="Sign Out"
+                 >
+                   <LogOut size={16} />
+                 </button>
+               </div>
+             )}acherMode ? 'Switch to Student' : 'Switch to Teacher'}
              </Link>
 
              {/* Notification Bell for Students */}
@@ -111,22 +125,80 @@ function Layout({ children }: { children: React.ReactNode }) {
             <User size={24} />
             <span className="text-[10px] font-medium">Students</span>
           </button>
-        </nav>
-      )}
-    </div>
-  );
-}
-
-function App() {
-  return (
-    <HashRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/course/:courseId" element={<CourseDetail />} />
-          <Route path="/lesson/:lessonId" element={<LessonViewer />} />
-          <Route path="/progress" element={<StudentProgress />} />
-          <Route path="/quiz/:quizId" element={<QuizPlayer />} />
+       Routes>
+        {/* Public Routes */}
+        <Route path="/signin" element={<SignInPage />} />
+        <Route path="/signup" element={<SignUpPage />} />
+        
+        {/* Protected Routes */}
+        <Route
+          path="/*"
+          element={
+            <RequireAuth>
+              <Layout>
+                <Routes>
+                  {/* Student Routes */}
+                  <Route path="/" element={
+                    <RequireRole role="student">
+                      <Dashboard />
+                    </RequireRole>
+                  } />
+                  <Route path="/course/:courseId" element={
+                    <RequireRole role="student">
+                      <CourseDetail />
+                    </RequireRole>
+                  } />
+                  <Route path="/lesson/:lessonId" element={
+                    <RequireRole role="student">
+                      <LessonViewer />
+                    </RequireRole>
+                  } />
+                  <Route path="/progress" element={
+                    <RequireRole role="student">
+                      <StudentProgress />
+                    </RequireRole>
+                  } />
+                  <Route path="/quiz/:quizId" element={
+                    <RequireRole role="student">
+                      <QuizPlayer />
+                    </RequireRole>
+                  } />
+                  <Route path="/notifications" element={
+                    <RequireRole role="student">
+                      <NotificationCenter />
+                    </RequireRole>
+                  } />
+                  
+                  {/* Teacher Routes */}
+                  <Route path="/teacher" element={
+                    <RequireRole role="teacher">
+                      <TeacherDashboard />
+                    </RequireRole>
+                  } />
+                  <Route path="/teacher/assignments" element={
+                    <RequireRole role="teacher">
+                      <AssignmentManager />
+                    </RequireRole>
+                  } />
+                  <Route path="/teacher/upload" element={
+                    <RequireRole role="teacher">
+                      <ContentUpload />
+                    </RequireRole>
+                  } />
+                  <Route path="/teacher/announcements" element={
+                    <RequireRole role="teacher">
+                      <AnnouncementManager />
+                    </RequireRole>
+                  } />
+                  
+                  {/* Catch-all redirect */}
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Layout>
+            </RequireAuth>
+          }
+        />
+      </Routeste path="/quiz/:quizId" element={<QuizPlayer />} />
           <Route path="/notifications" element={<NotificationCenter />} />
           
           {/* TEACHER ROUTES */}

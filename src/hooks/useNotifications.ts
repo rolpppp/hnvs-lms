@@ -2,30 +2,35 @@
 import { useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Notification as NotificationData } from '../lib/db';
-
-import { getStudentUUID } from '../lib/uuid';
-
-const getStudentId = () => getStudentUUID(); // Use consistent UUID
+import { useAuth } from '../features/auth/AuthProvider';
 
 export function useNotifications() {
+  const { user } = useAuth();
+  
   // Get unread notifications count
   const unreadCount = useLiveQuery(
-    () => db.notifications
-      .where('userId')
-      .equals(getStudentId())
-      .filter(n => !n.isRead) // Filter by isRead manually (boolean indexing in IndexedDB is tricky)
-      .count(),
-    []
+    () => {
+      if (!user?.id) return Promise.resolve(0);
+      return db.notifications
+        .where('userId')
+        .equals(user.id)
+        .filter(n => !n.isRead)
+        .count();
+    },
+    [user?.id]
   );
 
   // Get recent notifications
-  const notifications = useLiveQuery(
-    () => db.notifications
-      .where('userId')
-      .equals(getStudentId())
-      .reverse()
-      .sortBy('createdAt'),
-    []
+  const notifications = useLiveQuery<NotificationData[]>(
+    () => {
+      if (!user?.id) return Promise.resolve([]);
+      return db.notifications
+        .where('userId')
+        .equals(user.id)
+        .reverse()
+        .sortBy('createdAt');
+    },
+    [user?.id]
   );
 
   // Request notification permission on mount
@@ -41,8 +46,10 @@ export function useNotifications() {
     message: string,
     relatedId?: string
   ) => {
+    if (!user?.id) return;
+    
     const notification: NotificationData = {
-      userId: getStudentId(),
+      userId: user.id,
       type,
       title,
       message,
@@ -69,8 +76,9 @@ export function useNotifications() {
   };
 
   const markAllAsRead = async () => {
+    if (!user?.id) return;
     const unread = await db.notifications
-      .where({ userId: getStudentId(), isRead: false })
+      .where({ userId: user.id, isRead: false })
       .toArray();
     
     await Promise.all(
@@ -79,9 +87,10 @@ export function useNotifications() {
   };
 
   const clearAll = async () => {
+    if (!user?.id) return;
     await db.notifications
       .where('userId')
-      .equals(getStudentId())
+      .equals(user.id)
       .delete();
   };
 

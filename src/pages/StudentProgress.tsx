@@ -3,10 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, TrendingUp, Award, Clock, CheckCircle, Target } from 'lucide-react';
 import { db, type Course, type QuizAttempt } from '../lib/db';
-
-import { getStudentUUID } from '../lib/uuid';
-
-const getStudentId = () => getStudentUUID(); // Use consistent UUID
+import { useAuth } from '../features/auth/AuthProvider';
 
 interface CourseProgress {
   course: Course;
@@ -18,16 +15,20 @@ interface CourseProgress {
 }
 
 export default function StudentProgress() {
+  const { user } = useAuth();
   const [coursesProgress, setCoursesProgress] = useState<CourseProgress[]>([]);
   const [recentQuizzes, setRecentQuizzes] = useState<QuizAttempt[]>([]);
   const [totalTimeSpent, setTotalTimeSpent] = useState(0);
   const [overallCompletion, setOverallCompletion] = useState(0);
 
   useEffect(() => {
-    loadProgressData();
-  }, []);
+    if (user?.id) {
+      loadProgressData();
+    }
+  }, [user?.id]);
 
   const loadProgressData = async () => {
+    if (!user?.id) return;
     // Get all courses
     const courses = await db.courses.toArray();
 
@@ -40,7 +41,7 @@ export default function StudentProgress() {
     for (const course of courses) {
       const lessons = await db.lessons.where({ courseId: course.id }).toArray();
       const progress = await db.lessonProgress
-        .where({ courseId: course.id, studentId: getStudentId() })
+        .where({ courseId: course.id, studentId: user.id })
         .toArray();
 
       const completed = progress.filter(p => p.completed).length;
@@ -54,7 +55,7 @@ export default function StudentProgress() {
       const quizScores: number[] = [];
       for (const quizId of quizIds) {
         const attempts = await db.quizAttempts
-          .where({ quizId, studentId: getStudentId() })
+          .where({ quizId, studentId: user.id })
           .toArray();
         if (attempts.length > 0) {
           quizScores.push(attempts[attempts.length - 1].score);
@@ -81,7 +82,7 @@ export default function StudentProgress() {
 
     // Get recent quiz attempts
     const recentAttempts = await db.quizAttempts
-      .where({ studentId: getStudentId() })
+      .where({ studentId: user.id })
       .reverse()
       .limit(5)
       .toArray();

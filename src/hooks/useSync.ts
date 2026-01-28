@@ -2,15 +2,17 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { db } from "../lib/db";
 import { supabase } from "../lib/supabase";
 import { useLiveQuery } from "dexie-react-hooks";
-import { getStudentUUID } from "../lib/uuid";
+import { getCurrentUserId } from "../lib/uuid";
 
 // Import notification hook
 const createGradeNotification = async (quizId: string, score: number, total: number) => {
   const percentage = Math.round((score / total) * 100);
   const passed = percentage >= 75;
+  const userId = await getCurrentUserId();
+  if (!userId) return;
   
   await db.notifications.add({
-    userId: getStudentUUID(),
+    userId,
     type: 'grade',
     title: passed ? '🎉 Quiz Graded!' : 'Quiz Results Available',
     message: `You scored ${score}/${total} (${percentage}%) on your quiz.`,

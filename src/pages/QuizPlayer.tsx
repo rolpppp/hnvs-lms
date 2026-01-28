@@ -35,6 +35,7 @@ const MOCK_QUIZ = {
 export default function QuizPlayer() {
   const { quizId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { triggerSync, isOnline } = useSync();
 
   // State

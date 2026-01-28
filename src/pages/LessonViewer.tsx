@@ -3,12 +3,10 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Clock, FileText, PlayCircle, BookOpen } from 'lucide-react';
 import { db, type Lesson, type LessonProgress } from '../lib/db';
-
-import { getStudentUUID } from '../lib/uuid';
-
-const getStudentId = () => getStudentUUID(); // Use consistent UUID
+import { useAuth } from '../features/auth/AuthProvider';
 
 export default function LessonViewer() {
+  const { user } = useAuth();
   const { lessonId } = useParams();
   const navigate = useNavigate();
   const [lesson, setLesson] = useState<Lesson | null>(null);
@@ -33,8 +31,9 @@ export default function LessonViewer() {
     setLesson(lessonData);
 
     // Get or create progress
+    if (!user?.id) return;
     const existingProgress = await db.lessonProgress
-      .where({ lessonId, studentId: getStudentId() })
+      .where({ lessonId, studentId: user.id })
       .first();
 
     if (existingProgress) {
@@ -50,14 +49,14 @@ export default function LessonViewer() {
   };
 
   const handleComplete = async () => {
-    if (!lesson || isCompleting) return;
+    if (!lesson || isCompleting || !user?.id) return;
     
     setIsCompleting(true);
     const timeSpent = Math.floor((Date.now() - startTime) / 1000);
 
     // Update or create progress
     const existingProgress = await db.lessonProgress
-      .where({ lessonId: lesson.id, studentId: getStudentId() })
+      .where({ lessonId: lesson.id, studentId: user.id })
       .first();
 
     if (existingProgress) {
@@ -71,7 +70,7 @@ export default function LessonViewer() {
       await db.lessonProgress.add({
         lessonId: lesson.id,
         courseId: lesson.courseId,
-        studentId: getStudentId(),
+        studentId: user.id,
         completed: true,
         completedAt: Date.now(),
         timeSpent,

@@ -2,12 +2,10 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, FileText, PlayCircle, CheckCircle, BookOpen, HelpCircle } from "lucide-react";
 import { db, type Course, type Lesson, type LessonProgress } from "../lib/db";
-
-import { getStudentUUID } from '../lib/uuid';
-
-const getStudentId = () => getStudentUUID(); // Use consistent UUID
+import { useAuth } from '../features/auth/AuthProvider';
 
 export default function CourseDetail() {
+  const { user } = useAuth();
   const { courseId } = useParams();
   const [course, setCourse] = useState<Course | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -32,8 +30,9 @@ export default function CourseDetail() {
     setLessons(lessonsData);
 
     // Fetch progress
+    if (!user?.id) return;
     const progressData = await db.lessonProgress
-      .where({ courseId, studentId: getStudentId() })
+      .where({ courseId, studentId: user.id })
       .toArray();
     
     const progressMap = new Map<string, LessonProgress>();
