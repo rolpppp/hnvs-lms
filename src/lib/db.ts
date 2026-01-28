@@ -81,7 +81,7 @@ export interface QuizAttempt {
   answers: Record<string, number>; // { "questionId": selectedIndex }
   score: number;
   timestamp: number;
-  syncStatus: "pending" | "synced" | "failed"; // The Magic Flag
+  syncStatus: "pending" | "synced" | "failed" | "failed_orphan"; // The Magic Flag
 }
 
 export interface AssignmentSubmission {

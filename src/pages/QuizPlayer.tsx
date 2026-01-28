@@ -4,7 +4,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Save } from 'lucide-react';
 import { db } from '../lib/db';
 import { useSync } from '../hooks/useSync';
-import { getStudentUUID, getOrCreateUUIDForId } from '../lib/uuid';
+import { useAuth } from '../features/auth/AuthProvider';
+import { getOrCreateUUIDForId } from '../lib/uuid';
 
 // --- MOCK DATA (Ideally this comes from db.quizzes) ---
 const MOCK_QUIZ = {
@@ -77,9 +78,14 @@ export default function QuizPlayer() {
 
     // 2. Save to Offline DB (Dexie)
     try {
+      if (!user?.id) {
+        alert('You must be signed in to submit a quiz');
+        return;
+      }
+
       await db.quizAttempts.add({
         quizId: getOrCreateUUIDForId(quizId || 'quiz-1'), // Convert to UUID
-        studentId: getStudentUUID(), // Use consistent UUID for student
+        studentId: user.id, // Use authenticated user ID
         answers: answers,
         score: finalScore,
         timestamp: Date.now(),

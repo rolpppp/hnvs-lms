@@ -42,7 +42,8 @@ function Layout({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
 
-          <div clUser Info & Sign Out */}
+          <div className="flex items-center gap-3">
+             {/* User Info & Sign Out */}
              {profile && (
                <div className="flex items-center gap-2">
                  <span className="text-[10px] bg-white/20 px-2 py-1 rounded">
@@ -56,8 +57,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                    <LogOut size={16} />
                  </button>
                </div>
-             )}acherMode ? 'Switch to Student' : 'Switch to Teacher'}
-             </Link>
+             )}
 
              {/* Notification Bell for Students */}
              {!isTeacherMode && (
@@ -125,7 +125,16 @@ function Layout({ children }: { children: React.ReactNode }) {
             <User size={24} />
             <span className="text-[10px] font-medium">Students</span>
           </button>
-       Routes>
+        </nav>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <HashRouter>
+      <Routes>
         {/* Public Routes */}
         <Route path="/signin" element={<SignInPage />} />
         <Route path="/signup" element={<SignUpPage />} />
@@ -198,16 +207,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             </RequireAuth>
           }
         />
-      </Routeste path="/quiz/:quizId" element={<QuizPlayer />} />
-          <Route path="/notifications" element={<NotificationCenter />} />
-          
-          {/* TEACHER ROUTES */}
-          <Route path="/teacher" element={<TeacherDashboard />} />
-          <Route path="/teacher/assignments" element={<AssignmentManager />} />
-          <Route path="/teacher/upload" element={<ContentUpload />} />
-          <Route path="/teacher/announcements" element={<AnnouncementManager />} />
-        </Routes>
-      </Layout>
+      </Routes>
     </HashRouter>
   );
 }
