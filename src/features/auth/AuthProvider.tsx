@@ -65,7 +65,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // Safety timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        console.error('Auth initialization timed out');
+        setLoading(false);
+        setError('Connection timed out. Please check your internet connection.');
+      }
+    }, 10000); // 10 seconds timeout
+
     initAuth();
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
 
     // Listen for auth changes
     const { data: { subscription } } = authService.onAuthStateChange(

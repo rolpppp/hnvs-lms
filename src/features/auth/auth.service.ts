@@ -163,10 +163,23 @@ export const authService = {
   /**
    * Get current session
    */
+  /**
+   * Get current session
+   */
   async getSession() {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) throw error;
-    return data.session;
+    console.log('authService.getSession: Requesting session from Supabase');
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('authService.getSession error:', error);
+        throw error;
+      }
+      console.log('authService.getSession: Session received', data.session ? 'Active' : 'Null');
+      return data.session;
+    } catch (err) {
+      console.error('authService.getSession execution failed:', err);
+      throw err;
+    }
   },
 
   /**
