@@ -8,7 +8,7 @@ export default function SignInPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn } = useAuth();
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -27,7 +27,23 @@ export default function SignInPage() {
       navigate(from, { replace: true });
     } catch (err: any) {
       console.error('Sign in error:', err);
-      setError(err.message || 'Failed to sign in. Please check your credentials.');
+
+      // Parse specific error types for better user messages
+      let errorMessage = 'Failed to sign in. Please check your credentials.';
+
+      if (err.message) {
+        if (err.message.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password. Please try again.';
+        } else if (err.message.includes('profile not found')) {
+          errorMessage = 'Account profile not found. Please sign up or contact support.';
+        } else if (err.message.includes('network') || err.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

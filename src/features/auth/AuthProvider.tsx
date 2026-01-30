@@ -8,9 +8,11 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
+  error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, role: 'student' | 'teacher', schoolId?: string) => Promise<void>;
   signOut: () => Promise<void>;
+  clearError: () => void;
   isStudent: boolean;
   isTeacher: boolean;
   isAdmin: boolean;
@@ -23,38 +25,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Check active session
-    authService.getSession().then((session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        authService.getProfile(session.user.id).then((profile) => {
-          setProfile(profile);
-          setLoading(false);
-        });
-      } else {
+    const initAuth = async () => {
+      try {
+        const session = await authService.getSession();
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          try {
+            const profile = await authService.getProfile(session.user.id);
+            if (profile) {
+              setProfile(profile);
+            } else {
+              console.error('No profile found for authenticated user');
+              setError('Profile not found. Please contact support.');
+              // Clear the session if no profile exists
+              await authService.signOut();
+              setSession(null);
+              setUser(null);
+            }
+          } catch (err: any) {
+            console.error('Error loading profile:', err);
+            setError(err.message || 'Failed to load profile');
+            // Clear session on profile error
+            await authService.signOut();
+            setSession(null);
+            setUser(null);
+          }
+        }
+      } catch (err: any) {
+        console.error('Error loading session:', err);
+        setError(err.message || 'Failed to load session');
+      } finally {
         setLoading(false);
       }
-    });
+    };
+
+    initAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = authService.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event);
+        setError(null); // Clear errors on auth state change
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         if (session?.user) {
-          const profile = await authService.getProfile(session.user.id);
-          setProfile(profile);
+          try {
+            const profile = await authService.getProfile(session.user.id);
+            if (profile) {
+              setProfile(profile);
+            } else {
+              setProfile(null);
+            }
+          } catch (err: any) {
+            console.error('Error loading profile on auth change:', err);
+            setProfile(null);
+          }
         } else {
           setProfile(null);
         }
-        
-        setLoading(false);
       }
     );
 
@@ -82,6 +117,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setSession(null);
     setProfile(null);
+    setError(null);
+  };
+
+  const clearError = () => {
+    setError(null);
   };
 
   const value: AuthContextType = {
@@ -89,9 +129,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session,
     profile,
     loading,
+    error,
     signIn,
     signUp,
     signOut,
+    clearError,
     isStudent: profile?.role === 'student',
     isTeacher: profile?.role === 'teacher',
     isAdmin: profile?.role === 'admin',

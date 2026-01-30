@@ -3,7 +3,11 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa';
 
+const disableHmr = process.env.DISABLE_HMR === '1' || process.env.DISABLE_HMR === 'true';
+
 export default defineConfig({
+  // Optionally disable HMR websocket (useful for testing without WS)
+  server: disableHmr ? { hmr: false } : undefined,
   plugins: [
     react(),
     tailwindcss(),

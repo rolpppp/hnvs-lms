@@ -10,4 +10,17 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+  // Optimize: Minimal realtime configuration since we aren't using it
+  // This helps prevent pending websocket connections from blocking auth
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+});

@@ -7,18 +7,80 @@ import { BookOpen, Mail, Lock, User, AlertCircle, Hash } from 'lucide-react';
 export default function SignUpPage() {
   const navigate = useNavigate();
   const { signUp } = useAuth();
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [schoolId, setSchoolId] = useState('');
   const [role, setRole] = useState<'student' | 'teacher'>('student');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{
+    email?: string;
+    password?: string;
+    fullName?: string;
+  }>({});
   const [loading, setLoading] = useState(false);
+
+  // Validate individual fields
+  const validateField = (field: string, value: string) => {
+    const errors = { ...fieldErrors };
+
+    switch (field) {
+      case 'email':
+        if (!value.trim()) {
+          errors.email = 'Email is required';
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+          errors.email = 'Please enter a valid email address';
+        } else {
+          delete errors.email;
+        }
+        break;
+
+      case 'password':
+        if (!value) {
+          errors.password = 'Password is required';
+        } else if (value.length < 6) {
+          errors.password = 'Password must be at least 6 characters';
+        } else {
+          delete errors.password;
+        }
+        break;
+
+      case 'fullName':
+        if (!value.trim()) {
+          errors.fullName = 'Full name is required';
+        } else if (value.trim().length < 2) {
+          errors.fullName = 'Full name must be at least 2 characters';
+        } else {
+          delete errors.fullName;
+        }
+        break;
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Validate all fields before submission
+  const validateAllFields = () => {
+    const isEmailValid = validateField('email', email);
+    const isPasswordValid = validateField('password', password);
+    const isFullNameValid = validateField('fullName', fullName);
+
+    return isEmailValid && isPasswordValid && isFullNameValid;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
+
+    // Validate all fields before proceeding
+    if (!validateAllFields()) {
+      setError('Please fix the errors above before continuing.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -67,11 +129,18 @@ export default function SignUpPage() {
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  onBlur={(e) => validateField('fullName', e.target.value)}
+                  className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 ${fieldErrors.fullName
+                      ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                      : 'border-slate-300 focus:ring-blue-500 focus:border-transparent'
+                    }`}
                   placeholder="Juan Dela Cruz"
                   disabled={loading}
                 />
               </div>
+              {fieldErrors.fullName && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.fullName}</p>
+              )}
             </div>
 
             <div>
@@ -86,11 +155,18 @@ export default function SignUpPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  onBlur={(e) => validateField('email', e.target.value)}
+                  className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 ${fieldErrors.email
+                      ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                      : 'border-slate-300 focus:ring-blue-500 focus:border-transparent'
+                    }`}
                   placeholder="your.email@example.com"
                   disabled={loading}
                 />
               </div>
+              {fieldErrors.email && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.email}</p>
+              )}
             </div>
 
             <div>
@@ -106,12 +182,20 @@ export default function SignUpPage() {
                   minLength={6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  onBlur={(e) => validateField('password', e.target.value)}
+                  className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 ${fieldErrors.password
+                      ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                      : 'border-slate-300 focus:ring-blue-500 focus:border-transparent'
+                    }`}
                   placeholder="••••••••"
                   disabled={loading}
                 />
               </div>
-              <p className="mt-1 text-xs text-slate-500">Minimum 6 characters</p>
+              {fieldErrors.password ? (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.password}</p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">Minimum 6 characters</p>
+              )}
             </div>
 
             <div>
@@ -140,11 +224,10 @@ export default function SignUpPage() {
                 <button
                   type="button"
                   onClick={() => setRole('student')}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    role === 'student'
-                      ? 'border-blue-600 bg-blue-50 text-blue-900'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                  }`}
+                  className={`p-4 rounded-lg border-2 transition-all ${role === 'student'
+                    ? 'border-blue-600 bg-blue-50 text-blue-900'
+                    : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                    }`}
                   disabled={loading}
                 >
                   <p className="font-medium">Student</p>
@@ -152,11 +235,10 @@ export default function SignUpPage() {
                 <button
                   type="button"
                   onClick={() => setRole('teacher')}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    role === 'teacher'
-                      ? 'border-blue-600 bg-blue-50 text-blue-900'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                  }`}
+                  className={`p-4 rounded-lg border-2 transition-all ${role === 'teacher'
+                    ? 'border-blue-600 bg-blue-50 text-blue-900'
+                    : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                    }`}
                   disabled={loading}
                 >
                   <p className="font-medium">Teacher</p>
