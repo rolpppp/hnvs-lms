@@ -37,8 +37,10 @@ export interface Lesson {
   content?: string; // For text lessons or embedded content
   videoUrl?: string; // For video lessons
   pdfUrl?: string; // For PDF lessons
+  storage_path?: string; // Raw path in Supabase storage
   quizId?: string; // Reference to quiz if type is 'quiz'
   isLocked?: boolean; // Requires previous lesson completion
+  isVisible: boolean; // Synced from Supabase
 }
 
 export interface LessonProgress {

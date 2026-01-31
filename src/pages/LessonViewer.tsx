@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Clock, FileText, PlayCircle, BookOpen } from 'lucide-react';
 import { db, type Lesson, type LessonProgress } from '../lib/db';
 import { useAuth } from '../features/auth/AuthProvider';
+import { supabase } from '../lib/supabase';
 
 export default function LessonViewer() {
   const { user } = useAuth();
@@ -28,6 +29,27 @@ export default function LessonViewer() {
       navigate(-1);
       return;
     }
+
+    // 1. Check for Offline Material first
+    const offlineMaterial = await db.materials.get(lessonId);
+
+    if (offlineMaterial && offlineMaterial.content instanceof Blob) {
+      const objectUrl = URL.createObjectURL(offlineMaterial.content);
+      if (lessonData.type === 'video') lessonData.videoUrl = objectUrl;
+      if (lessonData.type === 'pdf') lessonData.pdfUrl = objectUrl;
+      console.log('Using offline content for:', lessonData.title);
+    } else {
+      // 2. Fallback to Online URL (Resolve Supabase Storage URLs)
+      if (lessonData.type === 'video' && lessonData.videoUrl && !lessonData.videoUrl.startsWith('http') && !lessonData.videoUrl.startsWith('blob')) {
+        const { data } = supabase.storage.from('course-content').getPublicUrl(lessonData.videoUrl);
+        lessonData.videoUrl = data.publicUrl;
+      }
+      if (lessonData.type === 'pdf' && lessonData.pdfUrl && !lessonData.pdfUrl.startsWith('http') && !lessonData.pdfUrl.startsWith('blob')) {
+        const { data } = supabase.storage.from('course-content').getPublicUrl(lessonData.pdfUrl);
+        lessonData.pdfUrl = data.publicUrl;
+      }
+    }
+
     setLesson(lessonData);
 
     // Get or create progress
@@ -50,7 +72,7 @@ export default function LessonViewer() {
 
   const handleComplete = async () => {
     if (!lesson || isCompleting || !user?.id) return;
-    
+
     setIsCompleting(true);
     const timeSpent = Math.floor((Date.now() - startTime) / 1000);
 
@@ -95,14 +117,14 @@ export default function LessonViewer() {
       {/* Header */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
-          <button 
+          <button
             onClick={() => navigate(`/course/${lesson.courseId}`)}
             className="flex items-center gap-2 text-slate-600 hover:text-slate-900"
           >
             <ArrowLeft size={20} />
             <span className="hidden sm:inline">Back to Course</span>
           </button>
-          
+
           {progress?.completed && (
             <div className="flex items-center gap-2 text-green-600 text-sm">
               <CheckCircle size={16} />
@@ -136,8 +158,8 @@ export default function LessonViewer() {
           {lesson.type === 'video' && (
             <div className="aspect-video bg-slate-100 rounded-lg flex items-center justify-center mb-4">
               {lesson.videoUrl ? (
-                <video 
-                  controls 
+                <video
+                  controls
                   className="w-full h-full rounded-lg"
                   src={lesson.videoUrl}
                 >
@@ -156,8 +178,8 @@ export default function LessonViewer() {
           {lesson.type === 'pdf' && (
             <div className="aspect-[8.5/11] bg-slate-100 rounded-lg flex items-center justify-center mb-4">
               {lesson.pdfUrl ? (
-                <iframe 
-                  src={lesson.pdfUrl} 
+                <iframe
+                  src={lesson.pdfUrl}
                   className="w-full h-full rounded-lg"
                   title={lesson.title}
                 />
@@ -235,7 +257,7 @@ export default function LessonViewer() {
               {isCompleting ? 'Saving...' : 'Mark as Complete'}
             </button>
           )}
-          
+
           {nextLesson && (
             <Link
               to={`/lesson/${nextLesson.id}`}

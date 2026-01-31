@@ -18,6 +18,8 @@ import ContentUpload from './pages/teachers/ContentUpload';
 import AnnouncementManager from './pages/teachers/AnnouncementManager';
 import NotificationCenter from './pages/NotificationCenter';
 import CourseManager from './pages/teachers/CourseManager';
+import TeacherCourseDetail from './pages/teachers/TeacherCourseDetail';
+import QuizCreator from './pages/teachers/QuizCreator';
 
 function Layout({ children }: { children: React.ReactNode }) {
   const { isOnline, isSyncing, pendingCount, triggerSync } = useSync();
@@ -203,6 +205,16 @@ function App() {
                   <Route path="/teacher/courses" element={
                     <RequireRole role="teacher">
                       <CourseManager />
+                    </RequireRole>
+                  } />
+                  <Route path="/teacher/courses/:courseId" element={
+                    <RequireRole role="teacher">
+                      <TeacherCourseDetail />
+                    </RequireRole>
+                  } />
+                  <Route path="/teacher/courses/:courseId/quiz/:quizId" element={
+                    <RequireRole role="teacher">
+                      <QuizCreator />
                     </RequireRole>
                   } />
 

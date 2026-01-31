@@ -93,13 +93,13 @@ export default function CourseManager() {
                 .from('courses')
                 .delete()
                 .eq('id', id);
-
             if (error) throw error;
             setCourses(courses.filter(c => c.id !== id));
         } catch (err) {
             console.error('Error deleting course:', err);
             alert('Failed to delete course');
         }
+        console.log("Course deleted successfully")
     };
 
     return (
@@ -216,27 +216,32 @@ export default function CourseManager() {
                 ) : (
                     <div className="grid gap-4">
                         {courses.map(course => (
-                            <div key={course.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-blue-300 transition-colors">
-                                <div>
+                            <div key={course.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-blue-300 transition-colors group relative">
+                                <Link to={`/teacher/courses/${course.id}`} className="absolute inset-0 z-0" aria-label={`View ${course.title}`} />
+                                <div className="z-10 relative pointer-events-none">
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded uppercase">
                                             {course.code}
                                         </span>
-                                        <h3 className="text-lg font-bold text-slate-800">{course.title}</h3>
+                                        <h3 className="text-lg font-bold text-slate-800 group-hover:text-blue-700 transition-colors">{course.title}</h3>
                                     </div>
                                     <p className="text-slate-500 text-sm line-clamp-2">{course.description || 'No description provided.'}</p>
                                 </div>
 
-                                <div className="flex items-center gap-2 shrink-0">
+                                <div className="flex items-center gap-2 shrink-0 z-10 relative">
                                     <Link
-                                        to={`/teacher/courses/${course.id}`} // Future detail/edit page
+                                        to={`/teacher/courses/${course.id}`}
                                         className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                         title="Edit Course"
                                     >
                                         <Edit size={18} />
                                     </Link>
                                     <button
-                                        onClick={() => handleDelete(course.id)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            // prevent link click
+                                            handleDelete(course.id);
+                                        }}
                                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                         title="Delete Course"
                                     >
