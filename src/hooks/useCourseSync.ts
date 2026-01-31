@@ -100,6 +100,67 @@ export function useCourseSync() {
                         console.log(`Synced ${localLessons.length} lessons.`);
                     }
                 }
+
+                // ----------------------------------------------------
+                // 1c. Fetch QUIZZES (Content Sync)
+                // ----------------------------------------------------
+                if (courseIds.length > 0) {
+                    // Fetch Quizzes
+                    const { data: quizzesData, error: quizError } = await supabase
+                        .from('quizzes')
+                        .select('id, course_id, title, published')
+                        .in('course_id', courseIds)
+                        .eq('published', true); // Only sync published quizzes
+
+                    if (quizError) console.error('Error fetching quizzes:', quizError);
+
+                    if (quizzesData && quizzesData.length > 0) {
+                        const quizIds = quizzesData.map(q => q.id);
+
+                        // Fetch Questions
+                        const { data: questionsData, error: qError } = await supabase
+                            .from('quiz_questions')
+                            .select('id, quiz_id, prompt, order')
+                            .in('quiz_id', quizIds)
+                            .order('order');
+
+                        if (qError) console.error('Error fetching questions:', qError);
+
+                        // Fetch Options
+                        const questionIds = questionsData?.map(q => q.id) || [];
+                        const { data: optionsData, error: oError } = await supabase
+                            .from('quiz_options')
+                            .select('id, question_id, label, is_correct')
+                            .in('question_id', questionIds);
+
+                        if (oError) console.error('Error fetching options:', oError);
+
+                        // Construct Local Quiz Objects (Denormalized)
+                        const localQuizzes = quizzesData.map(q => {
+                            const qs = questionsData?.filter(quest => quest.quiz_id === q.id) || [];
+                            return {
+                                id: q.id,
+                                courseId: q.course_id,
+                                title: q.title,
+                                questions: qs.map(quest => {
+                                    const opts = optionsData?.filter(opt => opt.question_id === quest.id) || [];
+                                    const correctOpt = opts.findIndex(o => o.is_correct);
+                                    return {
+                                        id: quest.id,
+                                        text: quest.prompt,
+                                        options: opts.map(o => o.label),
+                                        correctOption: correctOpt >= 0 ? correctOpt : 0
+                                    };
+                                })
+                            };
+                        });
+
+                        await db.transaction('rw', db.quizzes, async () => {
+                            await db.quizzes.bulkPut(localQuizzes);
+                        });
+                        console.log(`Synced ${localQuizzes.length} quizzes.`);
+                    }
+                }
             }
 
             // 2. Fetch Enrollments for current user

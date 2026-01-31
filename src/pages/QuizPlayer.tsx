@@ -1,37 +1,10 @@
-// src/pages/QuizPlayer.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Save } from 'lucide-react';
-import { db } from '../lib/db';
+import { db, type Quiz } from '../lib/db';
 import { useSync } from '../hooks/useSync';
-import { getCurrentUserId, getOrCreateUUIDForId } from '../lib/uuid';
+import { getCurrentUserId } from '../lib/uuid';
 import { useAuth } from '../features/auth/AuthProvider';
-
-// --- MOCK DATA (Ideally this comes from db.quizzes) ---
-const MOCK_QUIZ = {
-  id: 'quiz-1',
-  title: 'Safety Procedures & Tools',
-  questions: [
-    {
-      id: 'q1',
-      text: 'Which tool is primarily used for tightening hex bolts?',
-      options: ['Screwdriver', 'Wrench', 'Hammer', 'Pliers'],
-      correctIndex: 1 // Wrench
-    },
-    {
-      id: 'q2',
-      text: 'What is the first step before inspecting an engine?',
-      options: ['Wash the car', 'Disconnect the battery', 'Check the tires', 'Turn on the radio'],
-      correctIndex: 1 // Disconnect battery
-    },
-    {
-      id: 'q3',
-      text: 'PPE stands for Personal Protective ______.',
-      options: ['Engine', 'Equipment', 'Energy', 'Electricity'],
-      correctIndex: 1 // Equipment
-    }
-  ]
-};
 
 export default function QuizPlayer() {
   const { quizId } = useParams();
@@ -40,14 +13,47 @@ export default function QuizPlayer() {
   const { triggerSync, isOnline } = useSync();
 
   // State
+  const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [loading, setLoading] = useState(true);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [isFinished, setIsFinished] = useState(false);
   const [score, setScore] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
 
-  const question = MOCK_QUIZ.questions[currentQIndex];
-  const totalQ = MOCK_QUIZ.questions.length;
+  useEffect(() => {
+    if (quizId) {
+      loadQuiz();
+    }
+  }, [quizId]);
+
+  const loadQuiz = async () => {
+    if (!quizId) return;
+    try {
+      setLoading(true);
+      const q = await db.quizzes.get(quizId);
+      if (q) setQuiz(q);
+      else console.warn("Quiz not found in local DB", quizId);
+    } catch (e) {
+      console.error("Error loading quiz", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div className="p-12 text-center text-slate-500">Loading quiz...</div>;
+  if (!quiz) return (
+    <div className="p-12 text-center">
+      <h2 className="text-xl font-bold text-slate-800">Quiz Not Found</h2>
+      <p className="text-slate-500 mb-4">You may need to sync your courses.</p>
+      <button onClick={() => navigate(-1)} className="text-blue-600 hover:underline">Go Back</button>
+    </div>
+  );
+
+  const question = quiz.questions[currentQIndex];
+  const totalQ = quiz.questions.length;
+
+  if (totalQ === 0) return <div className="p-12 text-center">This quiz has no questions yet.</div>;
 
   // Handle Answer Selection
   const handleSelect = (optionIndex: number) => {
@@ -65,12 +71,13 @@ export default function QuizPlayer() {
 
   // Grading & Saving Logic
   const finishQuiz = async () => {
+    if (!quiz) return;
     setIsSaving(true);
 
     // 1. Grade Locally
     let finalScore = 0;
-    MOCK_QUIZ.questions.forEach(q => {
-      if (answers[q.id] === q.correctIndex) {
+    quiz.questions.forEach(q => {
+      if (answers[q.id] === q.correctOption) {
         finalScore++;
       }
     });
@@ -78,18 +85,22 @@ export default function QuizPlayer() {
 
     // 2. Save to Offline DB (Dexie)
     try {
+      const studentId = await getCurrentUserId();
+      if (!studentId) throw new Error("No user logged in");
+
       await db.quizAttempts.add({
-        quizId: getOrCreateUUIDForId(quizId || 'quiz-1'), // Convert to UUID
-        studentId: getCurrentUserId().toString(), // Use consistent UUID for student
+        quizId: quiz.id,
+        studentId: studentId,
         answers: answers,
         score: finalScore,
+        totalQuestions: quiz.questions.length,
         timestamp: Date.now(),
-        syncStatus: 'pending' // <--- THE MAGIC FLAG
+        syncStatus: 'pending'
       });
 
       setIsFinished(true);
 
-      // 3. Try to sync immediately if online (User Experience bonus)
+      // 3. Try to sync immediately if online
       if (isOnline) {
         triggerSync();
       }
@@ -144,9 +155,9 @@ export default function QuizPlayer() {
           <ArrowLeft size={20} />
         </button>
         <div className="flex-1 text-center font-bold text-slate-700">
-          Question {currentQIndex + 1} of {totalQ}
+          {quiz.title} - Q{currentQIndex + 1}
         </div>
-        <div className="w-8" /> {/* Spacer */}
+        <div className="w-8" />
       </div>
 
       {/* Progress Bar */}

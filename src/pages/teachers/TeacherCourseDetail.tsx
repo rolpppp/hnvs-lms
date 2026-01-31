@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Users, Settings, Plus, Trash2, Edit, Save, FileText, Video, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, BookOpen, Users, Settings, Plus, Trash2, Edit, Save, FileText, Video, Eye, EyeOff, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../features/auth/AuthProvider';
 
@@ -20,6 +20,15 @@ interface Lesson {
     quiz_id?: string;
 }
 
+interface StudentMetric {
+    id: string;
+    name: string;
+    email: string; // from profile
+    joinedAt: string;
+    quizzesTaken: number;
+    avgScore: number;
+}
+
 export default function TeacherCourseDetail() {
     const { courseId } = useParams();
     const { user } = useAuth();
@@ -28,6 +37,8 @@ export default function TeacherCourseDetail() {
     const [activeTab, setActiveTab] = useState<'content' | 'students' | 'settings'>('content');
     const [course, setCourse] = useState<Course | null>(null);
     const [lessons, setLessons] = useState<Lesson[]>([]);
+    const [students, setStudents] = useState<StudentMetric[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
     const [loading, setLoading] = useState(true);
 
     // Edit State
@@ -40,6 +51,78 @@ export default function TeacherCourseDetail() {
             fetchCourseData();
         }
     }, [courseId, user]);
+
+    // Fetch Student Data when tab changes to 'students'
+    useEffect(() => {
+        if (activeTab === 'students' && courseId) {
+            fetchStudentData();
+        }
+    }, [activeTab, courseId]);
+
+    const fetchStudentData = async () => {
+        if (!courseId) return;
+        try {
+            // 1. Fetch Enrollments
+            const { data: enrollments, error: enrollError } = await supabase
+                .from('enrollments')
+                .select('student_id, enrolled_at')
+                .eq('course_id', courseId);
+
+            if (enrollError) throw enrollError;
+            if (!enrollments || enrollments.length === 0) {
+                setStudents([]);
+                return;
+            }
+
+            const studentIds = enrollments.map(e => e.student_id);
+
+            // 2. Fetch Profiles
+            const { data: profiles, error: profError } = await supabase
+                .from('profiles')
+                .select('id, full_name, role')
+                .in('id', studentIds);
+
+            if (profError) throw profError;
+
+            // 3. Fetch Quizzes for this course (to filter submissions)
+            const { data: quizzes } = await supabase.from('quizzes').select('id').eq('course_id', courseId);
+            const quizIds = quizzes?.map(q => q.id) || [];
+
+            // 4. Fetch Submissions
+            let submissions: any[] = [];
+            if (quizIds.length > 0) {
+                const { data: subs } = await supabase
+                    .from('quiz_submissions')
+                    .select('student_id, score, quiz_id')
+                    .in('quiz_id', quizIds);
+                submissions = subs || [];
+            }
+
+            // 5. Aggregate
+            const metrics = enrollments.map(enroll => {
+                const profile = profiles?.find(p => p.id === enroll.student_id);
+                const studentSubs = submissions.filter(s => s.student_id === enroll.student_id);
+
+                // Calculate Average
+                const totalScore = studentSubs.reduce((acc, curr) => acc + curr.score, 0);
+                const avg = studentSubs.length > 0 ? (totalScore / studentSubs.length).toFixed(1) : '0.0';
+
+                return {
+                    id: enroll.student_id,
+                    name: profile?.full_name || 'Unknown Student',
+                    email: `student-${enroll.student_id.slice(0, 4)}@example.com`, // Placeholder
+                    joinedAt: new Date(enroll.enrolled_at).toLocaleDateString(),
+                    quizzesTaken: studentSubs.length,
+                    avgScore: parseFloat(avg)
+                };
+            });
+
+            setStudents(metrics);
+
+        } catch (err) {
+            console.error("Error fetching students:", err);
+        }
+    };
 
     const fetchCourseData = async () => {
         try {
@@ -414,8 +497,68 @@ export default function TeacherCourseDetail() {
                 )}
 
                 {activeTab === 'students' && (
-                    <div className="text-center py-12 text-slate-400">
-                        Student management coming soon...
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="flex-1 relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <input
+                                    type="text"
+                                    placeholder="Search students..."
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div className="text-sm text-slate-500 font-medium">
+                                Total Students: <span className="text-slate-900">{students.length}</span>
+                            </div>
+                        </div>
+
+                        {students.filter(s =>
+                            s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            s.email.toLowerCase().includes(searchQuery.toLowerCase())
+                        ).length === 0 ? (
+                            <div className="text-center py-12 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">
+                                {searchQuery ? 'No students found matching your search.' : 'No students enrolled in this course yet.'}
+                            </div>
+                        ) : (
+                            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase">
+                                        <tr>
+                                            <th className="px-6 py-4">Student Name</th>
+                                            <th className="px-6 py-4">Joined At</th>
+                                            <th className="px-6 py-4 text-center">Quizzes Taken</th>
+                                            <th className="px-6 py-4 text-right">Avg Score</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {students.filter(s =>
+                                            s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                            s.email.toLowerCase().includes(searchQuery.toLowerCase())
+                                        ).map(student => (
+                                            <tr key={student.id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="font-medium text-slate-900">{student.name}</div>
+                                                    <div className="text-xs text-slate-400">{student.email}</div>
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-600">
+                                                    {student.joinedAt}
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${student.quizzesTaken > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                        {student.quizzesTaken}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-right font-medium text-slate-900">
+                                                    {student.avgScore > 0 ? student.avgScore : '-'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

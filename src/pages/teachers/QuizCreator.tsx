@@ -172,6 +172,39 @@ export default function QuizCreator() {
         }
     };
 
+    const handleTogglePublish = async () => {
+        if (!quiz) return;
+        const newStatus = !quiz.published;
+
+        // Optimistic update
+        setQuiz({ ...quiz, published: newStatus });
+
+        try {
+            // 1. Update Quiz
+            const { error: quizError } = await supabase
+                .from('quizzes')
+                .update({ published: newStatus })
+                .eq('id', quiz.id);
+
+            if (quizError) throw quizError;
+
+            // 2. Update Linked Lesson Visibility (Optional but recommended)
+            // If we publish the quiz, we likely want the lesson to be visible too
+            const { error: lessonError } = await supabase
+                .from('lessons')
+                .update({ is_visible: newStatus })
+                .eq('quiz_id', quiz.id);
+
+            if (lessonError) console.warn('Could not update lesson visibility:', lessonError);
+
+        } catch (err: any) {
+            console.error('Error updating publish status:', err);
+            alert('Failed to update publish status');
+            // Revert
+            setQuiz({ ...quiz, published: !newStatus });
+        }
+    };
+
     const addQuestion = () => {
         const newQ: Question = {
             id: `new-${Date.now()}`,
@@ -224,7 +257,7 @@ export default function QuizCreator() {
                         </div>
                         <div className="flex items-center gap-2">
                             <button
-                                onClick={() => setQuiz({ ...quiz, published: !quiz.published })}
+                                onClick={handleTogglePublish}
                                 className={`px-4 py-2 rounded-lg font-medium text-sm border ${quiz.published ? 'border-yellow-300 text-yellow-700 hover:bg-yellow-50' : 'border-green-300 text-green-700 hover:bg-green-50'}`}
                             >
                                 {quiz.published ? 'Unpublish' : 'Publish'}

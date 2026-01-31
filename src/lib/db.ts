@@ -82,6 +82,7 @@ export interface QuizAttempt {
   studentId: string;
   answers: Record<string, number>; // { "questionId": selectedIndex }
   score: number;
+  totalQuestions?: number;
   timestamp: number;
   syncStatus: "pending" | "synced" | "failed" | "failed_orphan"; // The Magic Flag
 }
