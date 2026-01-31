@@ -129,6 +129,13 @@ export interface Notification {
   relatedId?: string; // Link to quiz, assignment, etc.
 }
 
+export interface Enrollment {
+  courseId: string;
+  studentId: string;
+  status: "active" | "inactive" | "blocked";
+  enrolledAt: number;
+}
+
 // ---------------------------------------------------------
 // 2. The Database Class
 // ---------------------------------------------------------
@@ -137,6 +144,7 @@ class HNVSLocaldB extends Dexie {
   // Declare implicit table properties
   users!: Table<User>;
   courses!: Table<Course>;
+  enrollments!: Table<Enrollment>;
   lessons!: Table<Lesson>;
   lessonProgress!: Table<LessonProgress>;
   materials!: Table<Material>;
@@ -154,9 +162,10 @@ class HNVSLocaldB extends Dexie {
     // Syntax: '++id' = auto-increment
     // 'id' = unique string key
     // 'courseId', 'syncStatus' = indexed for fast searching
-    this.version(3).stores({
+    this.version(4).stores({
       users: "id",
       courses: "id, code",
+      enrollments: "[courseId+studentId], courseId, studentId, status",
       lessons: "id, courseId, order",
       lessonProgress: "++id, lessonId, courseId, studentId",
       materials: "id, courseId",

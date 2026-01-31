@@ -4,8 +4,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Save } from 'lucide-react';
 import { db } from '../lib/db';
 import { useSync } from '../hooks/useSync';
+import { getCurrentUserId, getOrCreateUUIDForId } from '../lib/uuid';
 import { useAuth } from '../features/auth/AuthProvider';
-import { getOrCreateUUIDForId } from '../lib/uuid';
 
 // --- MOCK DATA (Ideally this comes from db.quizzes) ---
 const MOCK_QUIZ = {
@@ -66,7 +66,7 @@ export default function QuizPlayer() {
   // Grading & Saving Logic
   const finishQuiz = async () => {
     setIsSaving(true);
-    
+
     // 1. Grade Locally
     let finalScore = 0;
     MOCK_QUIZ.questions.forEach(q => {
@@ -78,14 +78,9 @@ export default function QuizPlayer() {
 
     // 2. Save to Offline DB (Dexie)
     try {
-      if (!user?.id) {
-        alert('You must be signed in to submit a quiz');
-        return;
-      }
-
       await db.quizAttempts.add({
         quizId: getOrCreateUUIDForId(quizId || 'quiz-1'), // Convert to UUID
-        studentId: user.id, // Use authenticated user ID
+        studentId: getCurrentUserId().toString(), // Use consistent UUID for student
         answers: answers,
         score: finalScore,
         timestamp: Date.now(),
@@ -96,7 +91,7 @@ export default function QuizPlayer() {
 
       // 3. Try to sync immediately if online (User Experience bonus)
       if (isOnline) {
-        triggerSync(); 
+        triggerSync();
       }
     } catch (e) {
       console.error("Failed to save quiz", e);
@@ -116,20 +111,20 @@ export default function QuizPlayer() {
           </div>
           <h2 className="text-2xl font-bold text-slate-800">Quiz Completed!</h2>
           <p className="text-slate-500 mt-2">Your score has been recorded.</p>
-          
+
           <div className="my-6 text-4xl font-black text-blue-900">
             {score} / {totalQ}
           </div>
 
           <div className={`text-sm p-3 rounded-lg mb-6 flex items-center justify-center gap-2 ${isOnline ? 'bg-blue-50 text-blue-700' : 'bg-yellow-50 text-yellow-700'}`}>
-             {isOnline ? (
-               <><span>Synced to Cloud</span> <CheckCircle size={14}/></>
-             ) : (
-               <><span>Saved to Sync Queue</span> <Save size={14}/></>
-             )}
+            {isOnline ? (
+              <><span>Synced to Cloud</span> <CheckCircle size={14} /></>
+            ) : (
+              <><span>Saved to Sync Queue</span> <Save size={14} /></>
+            )}
           </div>
 
-          <button 
+          <button
             onClick={() => navigate('/')}
             className="w-full bg-slate-900 text-white py-3 rounded-xl font-medium"
           >
@@ -156,8 +151,8 @@ export default function QuizPlayer() {
 
       {/* Progress Bar */}
       <div className="w-full bg-slate-100 h-1">
-        <div 
-          className="bg-blue-600 h-1 transition-all duration-300" 
+        <div
+          className="bg-blue-600 h-1 transition-all duration-300"
           style={{ width: `${((currentQIndex + 1) / totalQ) * 100}%` }}
         />
       </div>
@@ -175,16 +170,14 @@ export default function QuizPlayer() {
               <button
                 key={idx}
                 onClick={() => handleSelect(idx)}
-                className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-                  isSelected 
-                    ? 'border-blue-600 bg-blue-50 text-blue-800 font-medium' 
-                    : 'border-slate-100 bg-white text-slate-600 hover:bg-slate-50'
-                }`}
+                className={`w-full text-left p-4 rounded-xl border-2 transition-all ${isSelected
+                  ? 'border-blue-600 bg-blue-50 text-blue-800 font-medium'
+                  : 'border-slate-100 bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${
-                    isSelected ? 'border-blue-600' : 'border-slate-300'
-                  }`}>
+                  <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${isSelected ? 'border-blue-600' : 'border-slate-300'
+                    }`}>
                     {isSelected && <div className="w-3 h-3 bg-blue-600 rounded-full" />}
                   </div>
                   {opt}

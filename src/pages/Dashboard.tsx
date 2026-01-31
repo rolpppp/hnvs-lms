@@ -11,8 +11,10 @@ import {
 import { CourseCard } from "../components/CourseCard";
 import { useSync } from "../hooks/useSync";
 import { useStorageWarning } from "../hooks/useStorageWarning";
+import { useCourseSync } from "../hooks/useCourseSync";
 import { db, type Course, type Lesson } from "../lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
+import { supabase } from "../lib/supabase";
 
 // --- DUMMY DATA SEEDER (Run once to populate DB) ---
 const SEED_COURSES: Course[] = [
@@ -95,40 +97,45 @@ function Dashboard() {
   // This ensures that even if you refresh offline, the data persists!
   const courses = useLiveQuery(() => db.courses.toArray());
 
-  // 2. Seeder Effect: If DB is empty, add dummy data
+  // Data Sync Hooks
+  const { syncCourses } = useCourseSync();
+
+  // 2. Initial Data Load & Sync
   useEffect(() => {
-    const seed = async () => {
+    const initData = async () => {
+      // Seed dummy data only if DB is completely empty (first run / offline demo)
       try {
         const courseCount = await db.courses.count();
         if (courseCount === 0) {
           await db.courses.bulkAdd(SEED_COURSES);
-          console.log("Seeded Courses");
-        }
-        
-        const lessonCount = await db.lessons.count();
-        if (lessonCount === 0) {
           await db.lessons.bulkAdd(SEED_LESSONS);
-          console.log("Seeded Lessons");
+          console.log("Seeded Demo Data");
         }
-      } catch (error) {
-        // Ignore errors if data already exists
-        console.log("Seeding skipped - data already exists");
+      } catch (e) {
+        console.warn("Seeding error (ignored):", e);
       }
+
+      // Attempt to sync from server
+      syncCourses();
     };
-    seed();
-  }, []);
+
+    initData();
+  }, [syncCourses]);
 
   // 3. Simulate "Downloading" a Course Pack
   const handleDownload = async (courseId: string) => {
+    // Prevent navigation to course detail when clicking download button
+    // Note: The onClick in CourseCard should handle startPropagation if needed, 
+    // but here we just handle logic.
+
     if (!isOnline) {
       alert("You need internet to download the initial pack!");
       return;
     }
 
     // Check storage before downloading
-    const course = courses?.find(c => c.id === courseId);
     const estimatedSizeMB = 20; // Estimate ~20MB per course pack
-    
+
     const storageCheck = await canDownload(estimatedSizeMB);
     if (!storageCheck.canDownload) {
       alert(storageCheck.reason || "Not enough storage space");
@@ -137,7 +144,32 @@ function Dashboard() {
 
     setDownloadingId(courseId);
 
-    // Fake a 2-second download delay
+    // Auto-enroll in Supabase
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Upsert enrollment
+        await supabase.from('enrollments').upsert({
+          course_id: courseId,
+          student_id: user.id,
+          status: 'active'
+        }, { onConflict: 'course_id, student_id' });
+
+        // Also update local enrollment to match
+        await db.enrollments.put({
+          courseId: courseId,
+          studentId: user.id,
+          status: 'active',
+          enrolledAt: Date.now()
+        });
+      }
+    } catch (err) {
+      console.error("Auto-enrollment warning:", err);
+      // We continue with download even if enrollment fails provided we can get content? 
+      // Strictly we might want to stop, but for now allow it.
+    }
+
+    // Fake a 2-second download delay (Simulation of fetching assets)
     setTimeout(async () => {
       await db.courses.update(courseId, { isDownloaded: true });
       setDownloadingId(null);
@@ -162,7 +194,7 @@ function Dashboard() {
                 </p>
               </div>
             </div>
-            <button 
+            <button
               onClick={() => setShowWarning(false)}
               className="p-1 hover:bg-white/20 rounded"
             >

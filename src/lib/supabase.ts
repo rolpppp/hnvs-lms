@@ -10,6 +10,12 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
+console.log('🔌 Supabase Config:', {
+  url: supabaseUrl,
+  keyLength: supabaseKey?.length,
+  keyStart: supabaseKey?.substring(0, 10) + '...'
+});
+
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     persistSession: true,

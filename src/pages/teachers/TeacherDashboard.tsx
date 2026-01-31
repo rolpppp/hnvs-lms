@@ -1,16 +1,16 @@
 // src/pages/teacher/TeacherDashboard.tsx
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Users, 
-  CloudRain, 
-  AlertTriangle, 
+import {
+  Users,
+  CloudRain,
+  AlertTriangle,
   Search,
-  FileText,
   CheckCircle,
   Calendar,
   Download,
-  Bell
+  Bell,
+  BookOpen
 } from 'lucide-react';
 
 // --- MOCK DATA FOR PROTOTYPE ---
@@ -46,11 +46,11 @@ export default function TeacherDashboard() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    
+
     link.setAttribute('href', url);
     link.setAttribute('download', `student-scores-${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
-    
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -58,7 +58,7 @@ export default function TeacherDashboard() {
 
   return (
     <div className="pb-24 p-4 max-w-4xl mx-auto">
-      
+
       {/* 1. HEADER SECTION */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Instructor Dashboard</h1>
@@ -67,37 +67,37 @@ export default function TeacherDashboard() {
 
       {/* 2. STATS GRID */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard 
-          label="Active Students" 
-          value="42" 
-          icon={<Users className="text-blue-600" size={20} />} 
-          bg="bg-blue-50" 
+        <StatCard
+          label="Active Students"
+          value="42"
+          icon={<Users className="text-blue-600" size={20} />}
+          bg="bg-blue-50"
         />
-        <StatCard 
-          label="Pending Syncs" 
-          value="8" 
+        <StatCard
+          label="Pending Syncs"
+          value="8"
           sub="Waiting for students"
-          icon={<CloudRain className="text-yellow-600" size={20} />} 
-          bg="bg-yellow-50" 
+          icon={<CloudRain className="text-yellow-600" size={20} />}
+          bg="bg-yellow-50"
         />
-        <StatCard 
-          label="High Risk" 
-          value="3" 
+        <StatCard
+          label="High Risk"
+          value="3"
           sub="No sync > 3 days"
-          icon={<AlertTriangle className="text-red-600" size={20} />} 
-          bg="bg-red-50" 
+          icon={<AlertTriangle className="text-red-600" size={20} />}
+          bg="bg-red-50"
         />
-        <StatCard 
-          label="Avg. Grade" 
-          value="85%" 
-          icon={<CheckCircle className="text-green-600" size={20} />} 
-          bg="bg-green-50" 
+        <StatCard
+          label="Avg. Grade"
+          value="85%"
+          icon={<CheckCircle className="text-green-600" size={20} />}
+          bg="bg-green-50"
         />
       </div>
 
       {/* 3. STUDENT TRACKER TABLE */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        
+
         {/* Table Toolbar */}
         <div className="p-4 border-b border-slate-100 flex justify-between items-center gap-2 flex-wrap">
           <h2 className="font-bold text-slate-800">Student Progress</h2>
@@ -111,9 +111,9 @@ export default function TeacherDashboard() {
             </button>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search student..." 
+              <input
+                type="text"
+                placeholder="Search student..."
                 className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                 onChange={(e) => setFilter(e.target.value)}
               />
@@ -133,7 +133,7 @@ export default function TeacherDashboard() {
         <div className="divide-y divide-slate-100">
           {MOCK_STUDENTS.filter(s => s.name.toLowerCase().includes(filter.toLowerCase())).map((student) => (
             <div key={student.id} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-slate-50 transition-colors">
-              
+
               {/* Name Column */}
               <div className="col-span-5 md:col-span-4 flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${student.risk === 'high' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
@@ -152,10 +152,9 @@ export default function TeacherDashboard() {
 
               {/* Last Synced Column */}
               <div className="col-span-4 md:col-span-3 text-right md:text-left">
-                <div className={`text-sm font-medium ${
-                    student.risk === 'high' ? 'text-red-600' : 
-                    student.risk === 'medium' ? 'text-yellow-600' : 'text-slate-600'
-                }`}>
+                <div className={`text-sm font-medium ${student.risk === 'high' ? 'text-red-600' :
+                  student.risk === 'medium' ? 'text-yellow-600' : 'text-slate-600'
+                  }`}>
                   {student.lastSynced}
                 </div>
                 {student.risk === 'high' && <span className="text-[10px] text-red-500 block">Needs Follow-up</span>}
@@ -163,16 +162,15 @@ export default function TeacherDashboard() {
 
               {/* Status Column */}
               <div className="col-span-3 md:col-span-2 flex justify-center">
-                 <span className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 ${
-                   student.status === 'online' 
-                   ? 'bg-green-50 text-green-700 border-green-200' 
-                   : 'bg-slate-50 text-slate-500 border-slate-200'
-                 }`}>
-                   <div className={`w-2 h-2 rounded-full ${student.status === 'online' ? 'bg-green-500' : 'bg-slate-400'}`} />
-                   {student.status === 'online' ? 'Online' : 'Offline'}
-                 </span>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 ${student.status === 'online'
+                  ? 'bg-green-50 text-green-700 border-green-200'
+                  : 'bg-slate-50 text-slate-500 border-slate-200'
+                  }`}>
+                  <div className={`w-2 h-2 rounded-full ${student.status === 'online' ? 'bg-green-500' : 'bg-slate-400'}`} />
+                  {student.status === 'online' ? 'Online' : 'Offline'}
+                </span>
               </div>
-              
+
             </div>
           ))}
         </div>
@@ -181,22 +179,22 @@ export default function TeacherDashboard() {
       {/* 4. CONTENT UPLOAD CTA */}
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Link
-          to="/teacher/upload"
+          to="/teacher/courses"
           className="bg-blue-900 rounded-xl p-6 text-white shadow-lg hover:bg-blue-800 transition-colors block"
         >
           <div>
-            <h3 className="font-bold text-lg">Create Course Pack</h3>
+            <h3 className="font-bold text-lg">Manage Courses</h3>
             <p className="text-blue-200 text-sm max-w-xs mt-1">
-              Upload materials with Lite Version generation.
+              Create courses and upload materials.
             </p>
           </div>
           <div className="mt-4 inline-flex bg-white text-blue-900 px-4 py-3 rounded-lg font-bold text-sm items-center gap-2">
-            <FileText size={18} />
-            Upload
+            <BookOpen size={18} />
+            View Courses
           </div>
         </Link>
 
-        <Link 
+        <Link
           to="/teacher/assignments"
           className="bg-green-600 rounded-xl p-6 text-white shadow-lg hover:bg-green-700 transition-colors block"
         >
@@ -212,7 +210,7 @@ export default function TeacherDashboard() {
           </div>
         </Link>
 
-        <Link 
+        <Link
           to="/teacher/announcements"
           className="bg-orange-600 rounded-xl p-6 text-white shadow-lg hover:bg-orange-700 transition-colors block"
         >

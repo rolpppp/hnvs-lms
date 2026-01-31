@@ -11,9 +11,9 @@ export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  
+
   // Fallback for older environments (though unlikely in 2026)
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = Math.random() * 16 | 0;
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
@@ -37,38 +37,7 @@ export async function getCurrentUserId(): Promise<string | null> {
   return session?.user?.id || null;
 }
 
-/**
- * Get the current authenticated user's UUID synchronously
- * WARNING: This may be null if called before session is loaded
- * Prefer using getCurrentUserId() or accessing from AuthProvider context
- */
-export function getCurrentUserIdSync(): string | null {
-  // This is a fallback - ideally use the AuthProvider context
-  // We'll check the session from Supabase's internal storage
-  // Note: getSession() is async, so this won't work synchronously
-  // This is kept for backward compatibility but should be avoided
-  console.warn('getCurrentUserIdSync() called - prefer using getCurrentUserId() or AuthProvider context');
-  return null;
-}
-
-/**
- * DEPRECATED: Use getCurrentUserId() or auth context instead
- * Get a consistent UUID for development/testing purposes
- * In production, you should use actual user IDs from authentication
- */
-export function getStudentUUID(): string {
-  console.warn('getStudentUUID() is deprecated - use getCurrentUserId() or AuthProvider context');
-  // Check localStorage first for consistency (backward compatibility)
-  const stored = localStorage.getItem('student_uuid');
-  if (stored && isValidUUID(stored)) {
-    return stored;
-  }
-  
-  // Generate and store a new one
-  const newUUID = generateUUID();
-  localStorage.setItem('student_uuid', newUUID);
-  return newUUID;
-}
+// [Removed deprecated legacy functions: getCurrentUserIdSync, getStudentUUID]
 
 /**
  * Map simple IDs to UUIDs for demo data
@@ -81,7 +50,7 @@ export function getOrCreateUUIDForId(simpleId: string): string {
   if (ID_MAP.has(simpleId)) {
     return ID_MAP.get(simpleId)!;
   }
-  
+
   // Check localStorage for persisted mappings
   const storageKey = `uuid_map_${simpleId}`;
   const stored = localStorage.getItem(storageKey);
@@ -89,7 +58,7 @@ export function getOrCreateUUIDForId(simpleId: string): string {
     ID_MAP.set(simpleId, stored);
     return stored;
   }
-  
+
   // Generate new UUID and persist
   const newUUID = generateUUID();
   ID_MAP.set(simpleId, newUUID);

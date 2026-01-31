@@ -17,23 +17,24 @@ import AssignmentManager from './pages/teachers/AssignmentManager';
 import ContentUpload from './pages/teachers/ContentUpload';
 import AnnouncementManager from './pages/teachers/AnnouncementManager';
 import NotificationCenter from './pages/NotificationCenter';
+import CourseManager from './pages/teachers/CourseManager';
 
 function Layout({ children }: { children: React.ReactNode }) {
   const { isOnline, isSyncing, pendingCount, triggerSync } = useSync();
   const { unreadCount } = useNotifications();
   const { profile, signOut } = useAuth();
   const location = useLocation();
-  
+
   // Check if we are in Teacher Mode based on actual role
   const isTeacherMode = profile?.role === 'teacher';
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      
+
       {/* HEADER */}
       <header className={`sticky top-0 z-50 text-white shadow-md transition-colors duration-300 ${isOnline ? 'bg-blue-900' : 'bg-yellow-600'}`}>
         <div className="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
-          
+
           {/* Logo / Home Link */}
           <Link to="/" className="flex items-center gap-2">
             {isOnline ? <Wifi size={18} /> : <WifiOff size={18} />}
@@ -43,45 +44,45 @@ function Layout({ children }: { children: React.ReactNode }) {
           </Link>
 
           <div className="flex items-center gap-3">
-             {/* User Info & Sign Out */}
-             {profile && (
-               <div className="flex items-center gap-2">
-                 <span className="text-[10px] bg-white/20 px-2 py-1 rounded">
-                   {profile.full_name || 'User'}
-                 </span>
-                 <button
-                   onClick={signOut}
-                   className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                   title="Sign Out"
-                 >
-                   <LogOut size={16} />
-                 </button>
-               </div>
-             )}
+            {/* User Info & Sign Out */}
+            {profile && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] bg-white/20 px-2 py-1 rounded">
+                  {profile.full_name || 'User'}
+                </span>
+                <button
+                  onClick={signOut}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                  title="Sign Out"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+            )}
 
-             {/* Notification Bell for Students */}
-             {!isTeacherMode && (
-               <Link
-                 to="/notifications"
-                 className="relative p-2 hover:bg-white/10 rounded-full transition-colors"
-               >
-                 <Bell size={18} />
-                 {unreadCount > 0 && (
-                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                     {unreadCount}
-                   </span>
-                 )}
-               </Link>
-             )}
+            {/* Notification Bell for Students */}
+            {!isTeacherMode && (
+              <Link
+                to="/notifications"
+                className="relative p-2 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <Bell size={18} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                    {unreadCount}
+                  </span>
+                )}
+              </Link>
+            )}
 
-             {/* Sync Badge (Only show for students usually, but kept for demo) */}
-             {!isTeacherMode && pendingCount > 0 && (
-               <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                 {pendingCount}
-               </span>
-             )}
-            
-            <button 
+            {/* Sync Badge (Only show for students usually, but kept for demo) */}
+            {!isTeacherMode && pendingCount > 0 && (
+              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+                {pendingCount}
+              </span>
+            )}
+
+            <button
               onClick={triggerSync}
               disabled={!isOnline || isSyncing}
               className="p-2 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50"
@@ -138,7 +139,7 @@ function App() {
         {/* Public Routes */}
         <Route path="/signin" element={<SignInPage />} />
         <Route path="/signup" element={<SignUpPage />} />
-        
+
         {/* Protected Routes */}
         <Route
           path="/*"
@@ -177,7 +178,7 @@ function App() {
                       <NotificationCenter />
                     </RequireRole>
                   } />
-                  
+
                   {/* Teacher Routes */}
                   <Route path="/teacher" element={
                     <RequireRole role="teacher">
@@ -199,7 +200,12 @@ function App() {
                       <AnnouncementManager />
                     </RequireRole>
                   } />
-                  
+                  <Route path="/teacher/courses" element={
+                    <RequireRole role="teacher">
+                      <CourseManager />
+                    </RequireRole>
+                  } />
+
                   {/* Catch-all redirect */}
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
