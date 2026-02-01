@@ -22,72 +22,72 @@ export default function StudentProgress() {
   const [overallCompletion, setOverallCompletion] = useState(0);
 
   useEffect(() => {
+    const loadProgressData = async () => {
+      if (!user?.id) return;
+      // Get all courses
+      const courses = await db.courses.toArray();
+
+      // Calculate progress for each course
+      const progressData: CourseProgress[] = [];
+      let totalLessons = 0;
+      let totalCompleted = 0;
+      let totalTime = 0;
+
+      for (const course of courses) {
+        const lessons = await db.lessons.where({ courseId: course.id }).toArray();
+        const progress = await db.lessonProgress
+          .where({ courseId: course.id, studentId: user.id })
+          .toArray();
+
+        const completed = progress.filter(p => p.completed).length;
+        const timeSpent = progress.reduce((sum, p) => sum + (p.timeSpent || 0), 0);
+
+        // Get quiz attempts for this course
+        const quizIds = lessons
+          .filter(l => l.type === 'quiz' && l.quizId)
+          .map(l => l.quizId!);
+
+        const quizScores: number[] = [];
+        for (const quizId of quizIds) {
+          const attempts = await db.quizAttempts
+            .where({ quizId, studentId: user.id })
+            .toArray();
+          if (attempts.length > 0) {
+            quizScores.push(attempts[attempts.length - 1].score);
+          }
+        }
+
+        progressData.push({
+          course,
+          completed,
+          total: lessons.length,
+          percentage: lessons.length > 0 ? Math.round((completed / lessons.length) * 100) : 0,
+          timeSpent: Math.round(timeSpent / 60), // convert to minutes
+          quizScores,
+        });
+
+        totalLessons += lessons.length;
+        totalCompleted += completed;
+        totalTime += timeSpent;
+      }
+
+      setCoursesProgress(progressData);
+      setTotalTimeSpent(Math.round(totalTime / 60));
+      setOverallCompletion(totalLessons > 0 ? Math.round((totalCompleted / totalLessons) * 100) : 0);
+
+      // Get recent quiz attempts
+      const recentAttempts = await db.quizAttempts
+        .where({ studentId: user.id })
+        .reverse()
+        .limit(5)
+        .toArray();
+      setRecentQuizzes(recentAttempts);
+    };
+
     if (user?.id) {
       loadProgressData();
     }
   }, [user?.id]);
-
-  const loadProgressData = async () => {
-    if (!user?.id) return;
-    // Get all courses
-    const courses = await db.courses.toArray();
-
-    // Calculate progress for each course
-    const progressData: CourseProgress[] = [];
-    let totalLessons = 0;
-    let totalCompleted = 0;
-    let totalTime = 0;
-
-    for (const course of courses) {
-      const lessons = await db.lessons.where({ courseId: course.id }).toArray();
-      const progress = await db.lessonProgress
-        .where({ courseId: course.id, studentId: user.id })
-        .toArray();
-
-      const completed = progress.filter(p => p.completed).length;
-      const timeSpent = progress.reduce((sum, p) => sum + (p.timeSpent || 0), 0);
-
-      // Get quiz attempts for this course
-      const quizIds = lessons
-        .filter(l => l.type === 'quiz' && l.quizId)
-        .map(l => l.quizId!);
-      
-      const quizScores: number[] = [];
-      for (const quizId of quizIds) {
-        const attempts = await db.quizAttempts
-          .where({ quizId, studentId: user.id })
-          .toArray();
-        if (attempts.length > 0) {
-          quizScores.push(attempts[attempts.length - 1].score);
-        }
-      }
-
-      progressData.push({
-        course,
-        completed,
-        total: lessons.length,
-        percentage: lessons.length > 0 ? Math.round((completed / lessons.length) * 100) : 0,
-        timeSpent: Math.round(timeSpent / 60), // convert to minutes
-        quizScores,
-      });
-
-      totalLessons += lessons.length;
-      totalCompleted += completed;
-      totalTime += timeSpent;
-    }
-
-    setCoursesProgress(progressData);
-    setTotalTimeSpent(Math.round(totalTime / 60));
-    setOverallCompletion(totalLessons > 0 ? Math.round((totalCompleted / totalLessons) * 100) : 0);
-
-    // Get recent quiz attempts
-    const recentAttempts = await db.quizAttempts
-      .where({ studentId: user.id })
-      .reverse()
-      .limit(5)
-      .toArray();
-    setRecentQuizzes(recentAttempts);
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -225,9 +225,8 @@ export default function StudentProgress() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-lg text-slate-900">{attempt.score}/3</p>
-                    <p className={`text-xs ${
-                      attempt.syncStatus === 'synced' ? 'text-green-600' : 'text-yellow-600'
-                    }`}>
+                    <p className={`text-xs ${attempt.syncStatus === 'synced' ? 'text-green-600' : 'text-yellow-600'
+                      }`}>
                       {attempt.syncStatus === 'synced' ? 'Synced' : 'Pending'}
                     </p>
                   </div>

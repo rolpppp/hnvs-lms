@@ -28,83 +28,115 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check active session
-    const initAuth = async () => {
-      try {
-        const session = await authService.getSession();
-        setSession(session);
-        setUser(session?.user ?? null);
+    let mounted = true;
+    let timeoutId: number;
+    let authSubscription: any;
 
-        if (session?.user) {
-          try {
-            const profile = await authService.getProfile(session.user.id);
-            if (profile) {
-              setProfile(profile);
-            } else {
-              console.error('No profile found for authenticated user');
-              // Don't sign out immediately on profile error, just set error state
-              // This allows for retrying without relogin
-              setError('Profile not found. Please contact support.');
-            }
-          } catch (err: any) {
-            console.error('Error loading profile:', err);
-            setError(err.message || 'Failed to load profile');
-            // Do NOT sign out here. Let the user retry.
-          }
+    const loadProfile = async (userId: string) => {
+      try {
+        const profile = await authService.getProfile(userId);
+        if (!mounted) return;
+        
+        if (profile) {
+          setProfile(profile);
+          setError(null);
+        } else {
+          console.error('No profile found for authenticated user');
+          setError('Profile not found. Please contact support.');
         }
       } catch (err: any) {
-        console.error('Error loading session:', err);
-        setError(err.message || 'Failed to load session');
-      } finally {
-        setLoading(false);
+        if (!mounted) return;
+        console.error('Error loading profile:', err);
+        setError(err.message || 'Failed to load profile');
       }
     };
 
-    // Safety timeout to prevent infinite loading
-    const timeoutId = setTimeout(() => {
-      if (loading) {
-        console.error('Auth initialization timed out');
-        // Don't completely stop loading, just show error
-        // This allows the actual request to potentially finish if it's just very slow
-        setError('Connection timed out. Please check your internet connection.');
-        setLoading(false);
-      }
-    }, 60000); // 10 seconds timeout
+    const initAuth = async () => {
+      try {
+        // Set up auth state listener FIRST
+        const { data: { subscription } } = authService.onAuthStateChange(
+          async (event, session) => {
+            if (!mounted) return;
+            
+            console.log('Auth state changed:', event, session?.user?.id ? 'User ID: ' + session.user.id : 'No user');
+            
+            // Clear timeout on any auth event
+            if (timeoutId) clearTimeout(timeoutId);
+            
+            setSession(session);
+            setUser(session?.user ?? null);
+            setLoading(false);
 
-    initAuth();
+            if (session?.user) {
+              await loadProfile(session.user.id);
+            } else {
+              setProfile(null);
+              setError(null);
+            }
+          }
+        );
 
-    return () => {
-      clearTimeout(timeoutId);
-    };
+        authSubscription = subscription;
 
-    // Listen for auth changes
-    const { data: { subscription } } = authService.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event);
-        setError(null); // Clear errors on auth state change
+        // Check if unmounted during async operation
+        if (!mounted) {
+          subscription.unsubscribe();
+          return;
+        }
+
+        // Now check for existing session
+        const session = await authService.getSession();
+        
+        if (!mounted) {
+          subscription.unsubscribe();
+          return;
+        }
+
+        // Clear timeout on successful session check
+        if (timeoutId) clearTimeout(timeoutId);
+
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          try {
-            const profile = await authService.getProfile(session.user.id);
-            if (profile) {
-              setProfile(profile);
-            } else {
-              setProfile(null);
-            }
-          } catch (err: any) {
-            console.error('Error loading profile on auth change:', err);
-            setProfile(null);
-          }
+          await loadProfile(session.user.id);
         } else {
-          setProfile(null);
+          // No session, clear loading immediately
+          setLoading(false);
         }
-      }
-    );
 
+        // Only set loading false after profile loads or no session
+        if (mounted && session?.user) {
+          setLoading(false);
+        }
+
+      } catch (err: any) {
+        if (!mounted) return;
+        console.error('Error loading session:', err);
+        setError(err.message || 'Failed to load session');
+        setLoading(false);
+      }
+    };
+
+    // Safety timeout - shorter timeout
+    timeoutId = window.setTimeout(() => {
+      if (mounted && loading) {
+        console.error('Auth initialization timed out');
+        setError('Connection timed out. Please refresh the page.');
+        setLoading(false);
+      }
+    }, 10000); // Reduced to 10s
+
+    // Start initialization
+    initAuth();
+
+    // Cleanup
     return () => {
-      subscription.unsubscribe();
+      mounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (authSubscription) {
+        authSubscription.unsubscribe();
+      }
     };
   }, []);
 

@@ -13,62 +13,62 @@ export default function LessonViewer() {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [progress, setProgress] = useState<LessonProgress | null>(null);
   const [nextLesson, setNextLesson] = useState<Lesson | null>(null);
-  const [startTime] = useState(Date.now());
+  const [startTime] = useState(() => Date.now());
   const [isCompleting, setIsCompleting] = useState(false);
 
   useEffect(() => {
+    const loadLesson = async () => {
+      if (!lessonId) return;
+
+      const lessonData = await db.lessons.get(lessonId);
+      if (!lessonData) {
+        alert('Lesson not found');
+        navigate(-1);
+        return;
+      }
+
+      // 1. Check for Offline Material first
+      const offlineMaterial = await db.materials.get(lessonId);
+
+      if (offlineMaterial && offlineMaterial.content instanceof Blob) {
+        const objectUrl = URL.createObjectURL(offlineMaterial.content);
+        if (lessonData.type === 'video') lessonData.videoUrl = objectUrl;
+        if (lessonData.type === 'pdf') lessonData.pdfUrl = objectUrl;
+        console.log('Using offline content for:', lessonData.title);
+      } else {
+        // 2. Fallback to Online URL (Resolve Supabase Storage URLs)
+        if (lessonData.type === 'video' && lessonData.videoUrl && !lessonData.videoUrl.startsWith('http') && !lessonData.videoUrl.startsWith('blob')) {
+          const { data } = supabase.storage.from('course-content').getPublicUrl(lessonData.videoUrl);
+          lessonData.videoUrl = data.publicUrl;
+        }
+        if (lessonData.type === 'pdf' && lessonData.pdfUrl && !lessonData.pdfUrl.startsWith('http') && !lessonData.pdfUrl.startsWith('blob')) {
+          const { data } = supabase.storage.from('course-content').getPublicUrl(lessonData.pdfUrl);
+          lessonData.pdfUrl = data.publicUrl;
+        }
+      }
+
+      setLesson(lessonData);
+
+      // Get or create progress
+      if (!user?.id) return;
+      const existingProgress = await db.lessonProgress
+        .where({ lessonId, studentId: user.id })
+        .first();
+
+      if (existingProgress) {
+        setProgress(existingProgress);
+      }
+
+      // Get next lesson
+      const next = await db.lessons
+        .where({ courseId: lessonData.courseId })
+        .filter(l => l.order === lessonData.order + 1)
+        .first();
+      setNextLesson(next || null);
+    };
+
     loadLesson();
-  }, [lessonId]);
-
-  const loadLesson = async () => {
-    if (!lessonId) return;
-
-    const lessonData = await db.lessons.get(lessonId);
-    if (!lessonData) {
-      alert('Lesson not found');
-      navigate(-1);
-      return;
-    }
-
-    // 1. Check for Offline Material first
-    const offlineMaterial = await db.materials.get(lessonId);
-
-    if (offlineMaterial && offlineMaterial.content instanceof Blob) {
-      const objectUrl = URL.createObjectURL(offlineMaterial.content);
-      if (lessonData.type === 'video') lessonData.videoUrl = objectUrl;
-      if (lessonData.type === 'pdf') lessonData.pdfUrl = objectUrl;
-      console.log('Using offline content for:', lessonData.title);
-    } else {
-      // 2. Fallback to Online URL (Resolve Supabase Storage URLs)
-      if (lessonData.type === 'video' && lessonData.videoUrl && !lessonData.videoUrl.startsWith('http') && !lessonData.videoUrl.startsWith('blob')) {
-        const { data } = supabase.storage.from('course-content').getPublicUrl(lessonData.videoUrl);
-        lessonData.videoUrl = data.publicUrl;
-      }
-      if (lessonData.type === 'pdf' && lessonData.pdfUrl && !lessonData.pdfUrl.startsWith('http') && !lessonData.pdfUrl.startsWith('blob')) {
-        const { data } = supabase.storage.from('course-content').getPublicUrl(lessonData.pdfUrl);
-        lessonData.pdfUrl = data.publicUrl;
-      }
-    }
-
-    setLesson(lessonData);
-
-    // Get or create progress
-    if (!user?.id) return;
-    const existingProgress = await db.lessonProgress
-      .where({ lessonId, studentId: user.id })
-      .first();
-
-    if (existingProgress) {
-      setProgress(existingProgress);
-    }
-
-    // Get next lesson
-    const next = await db.lessons
-      .where({ courseId: lessonData.courseId })
-      .filter(l => l.order === lessonData.order + 1)
-      .first();
-    setNextLesson(next || null);
-  };
+  }, [lessonId, user?.id]);
 
   const handleComplete = async () => {
     if (!lesson || isCompleting || !user?.id) return;

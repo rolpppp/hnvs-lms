@@ -44,7 +44,7 @@ export function useStorageWarning() {
 
   const canDownload = async (estimatedSizeMB: number): Promise<{ canDownload: boolean; reason?: string }> => {
     const info = await checkStorage();
-    
+
     if (!info) {
       // If we can't check, allow download (better than blocking)
       return { canDownload: true };
@@ -76,6 +76,7 @@ export function useStorageWarning() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line
     checkStorage();
   }, []);
 

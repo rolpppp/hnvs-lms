@@ -1,4 +1,5 @@
 // src/pages/NotificationCenter.tsx
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Bell, CheckCheck, Trash2, Award, AlertCircle, Calendar, Cloud } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
@@ -16,8 +17,10 @@ export default function NotificationCenter() {
     }
   };
 
+  // Capture now once per render cycle (or use a periodic update if needed, but for simple display this is enough to satisfy 'pure')
+  const [now] = useState(() => Date.now());
+
   const formatTime = (timestamp: number) => {
-    const now = Date.now();
     const diff = now - timestamp;
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
@@ -83,11 +86,10 @@ export default function NotificationCenter() {
             <div
               key={notification.id}
               onClick={() => notification.id && !notification.isRead && markAsRead(notification.id)}
-              className={`bg-white rounded-xl p-4 shadow-sm border-2 transition-all cursor-pointer hover:shadow-md ${
-                notification.isRead 
-                  ? 'border-slate-200 opacity-75' 
-                  : 'border-blue-200 bg-blue-50/30'
-              }`}
+              className={`bg-white rounded-xl p-4 shadow-sm border-2 transition-all cursor-pointer hover:shadow-md ${notification.isRead
+                ? 'border-slate-200 opacity-75'
+                : 'border-blue-200 bg-blue-50/30'
+                }`}
             >
               <div className="flex items-start gap-3">
                 <div className={`p-2 rounded-lg ${notification.isRead ? 'bg-slate-100' : 'bg-white'}`}>

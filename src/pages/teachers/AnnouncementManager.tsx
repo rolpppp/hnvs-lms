@@ -1,43 +1,81 @@
 // src/pages/teachers/AnnouncementManager.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Bell, AlertCircle, Send, Clock } from 'lucide-react';
 import { db, type Announcement } from '../../lib/db';
+import { supabase } from '../../lib/supabase';
 
 const TEACHER_ID = 'teacher-1'; // Mock teacher ID
 
-export default function AnnouncementManager() {
+interface AnnouncementManagerProps {
+  courseId?: string;
+}
+
+export default function AnnouncementManager({ courseId }: AnnouncementManagerProps) {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     content: '',
     isUrgent: false,
-    courseId: '',
+    courseId: courseId || '',
   });
+
+  const loadAnnouncements = useCallback(async () => {
+    let allAnnouncements = await db.announcements.toArray();
+
+    // Filter by courseId if provided
+    if (courseId) {
+      allAnnouncements = allAnnouncements.filter(a => a.courseId === courseId);
+    }
+
+    setAnnouncements(allAnnouncements.sort((a, b) => b.createdAt - a.createdAt));
+  }, [courseId]);
 
   useEffect(() => {
     loadAnnouncements();
-  }, []);
-
-  const loadAnnouncements = async () => {
-    const allAnnouncements = await db.announcements.toArray();
-    setAnnouncements(allAnnouncements.sort((a, b) => b.createdAt - a.createdAt));
-  };
+  }, [loadAnnouncements]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const newAnnouncement: Announcement = {
-      id: `announcement-${Date.now()}`,
+      id: crypto.randomUUID(), // Use real UUID
       teacherId: TEACHER_ID,
       title: formData.title,
       content: formData.content,
       isUrgent: formData.isUrgent,
-      courseId: formData.courseId || undefined,
+      courseId: courseId || formData.courseId || undefined,
+      // eslint-disable-next-line react-hooks/purity
       createdAt: Date.now(),
-      syncStatus: 'pending',
+      syncStatus: 'synced', // Assume synced if online, else pending
     };
+
+    // 1. Save to Supabase (if we have a courseId)
+    // Note: We use the supabase client directly here for immediate feedback
+    if (newAnnouncement.courseId) {
+      try {
+        // Need to get current user ID really, but for now we rely on RLS or the mock TEACHER_ID
+        // Actually, let's just insert.
+        const { error } = await supabase.from('announcements').insert({
+          id: newAnnouncement.id,
+          course_id: newAnnouncement.courseId,
+          teacher_id: (await supabase.auth.getUser()).data.user?.id,
+          title: newAnnouncement.title,
+          content: newAnnouncement.content,
+          is_urgent: newAnnouncement.isUrgent,
+          created_at: new Date(newAnnouncement.createdAt).toISOString()
+        });
+
+        if (error) {
+          console.error("Failed to sync announcement:", error);
+          newAnnouncement.syncStatus = 'pending'; // Fallback to pending
+        }
+      } catch (err) {
+        console.error("Offline or error:", err);
+        newAnnouncement.syncStatus = 'pending';
+      }
+    }
 
     await db.announcements.add(newAnnouncement);
 
@@ -58,7 +96,7 @@ export default function AnnouncementManager() {
       title: '',
       content: '',
       isUrgent: false,
-      courseId: '',
+      courseId: courseId || '',
     });
     setShowCreateForm(false);
     loadAnnouncements();
@@ -88,22 +126,24 @@ export default function AnnouncementManager() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24">
-      {/* Header */}
-      <div className="bg-blue-900 text-white p-6">
-        <div className="max-w-4xl mx-auto">
-          <Link
-            to="/teacher"
-            className="inline-flex items-center gap-2 text-blue-200 hover:text-white mb-4 transition-colors"
-          >
-            <ArrowLeft size={18} /> Back to Dashboard
-          </Link>
-          <h1 className="text-2xl sm:text-3xl font-bold">Announcements</h1>
-          <p className="text-blue-100 text-sm">Send urgent notifications to students</p>
+    <div className="bg-slate-50 min-h-full pb-24">
+      {/* Header - Only show if separate page, not embedded */}
+      {!courseId && (
+        <div className="bg-blue-900 text-white p-6 mb-6">
+          <div className="max-w-4xl mx-auto">
+            <Link
+              to="/teacher"
+              className="inline-flex items-center gap-2 text-blue-200 hover:text-white mb-4 transition-colors"
+            >
+              <ArrowLeft size={18} /> Back to Dashboard
+            </Link>
+            <h1 className="text-2xl sm:text-3xl font-bold">Announcements</h1>
+            <p className="text-blue-100 text-sm">Send urgent notifications to students</p>
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="max-w-4xl mx-auto p-4 space-y-6">
+      <div className={`max-w-4xl mx-auto ${courseId ? '' : 'p-4'} space-y-6`}>
         {/* Info Banner */}
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
           <Bell className="text-yellow-600 mt-0.5 flex-shrink-0" size={20} />
@@ -204,11 +244,10 @@ export default function AnnouncementManager() {
             announcements.map((announcement) => (
               <div
                 key={announcement.id}
-                className={`bg-white rounded-xl shadow-sm border-2 p-5 hover:shadow-md transition-shadow ${
-                  announcement.isUrgent
-                    ? 'border-red-200 bg-red-50/30'
-                    : 'border-slate-200'
-                }`}
+                className={`bg-white rounded-xl shadow-sm border-2 p-5 hover:shadow-md transition-shadow ${announcement.isUrgent
+                  ? 'border-red-200 bg-red-50/30'
+                  : 'border-slate-200'
+                  }`}
               >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1">

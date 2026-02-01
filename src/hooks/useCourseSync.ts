@@ -15,12 +15,43 @@ export function useCourseSync() {
         setError(null);
 
         try {
-            // 1. Fetch ALL courses (public info)
-            const { data: remoteCourses, error: courseError } = await supabase
-                .from('courses')
-                .select('id, code, title, description');
+            if (!user) throw new Error("User not authenticated");
 
-            if (courseError) throw courseError;
+            // 1. Determine Visible Courses
+            // A. Fetch courses created by me
+            const { data: myCourses, error: myError } = await supabase
+                .from('courses')
+                .select('id, code, title, description')
+                .eq('created_by', user.id);
+
+            if (myError) throw myError;
+
+            // B. Fetch enrollments to find other courses
+            const { data: myEnrollments, error: enrollError } = await supabase
+                .from('enrollments')
+                .select('course_id')
+                .eq('student_id', user.id);
+
+            if (enrollError) throw enrollError;
+
+            const enrolledCourseIds = myEnrollments?.map(e => e.course_id) || [];
+
+            // C. Fetch enrolled courses (if any)
+            let enrolledCourses: any[] = [];
+            if (enrolledCourseIds.length > 0) {
+                const { data, error } = await supabase
+                    .from('courses')
+                    .select('id, code, title, description')
+                    .in('id', enrolledCourseIds);
+                if (error) throw error;
+                enrolledCourses = data || [];
+            }
+
+            // D. Merge lists (Handle duplicates if looking at own course as student)
+            const allVisibleCourses = [...(myCourses || []), ...enrolledCourses];
+            // Remove duplicates by ID
+            const remoteCourses = Array.from(new Map(allVisibleCourses.map(c => [c.id, c])).values());
+            const courseIds = remoteCourses.map(c => c.id);
 
             if (remoteCourses) {
                 // Bulk put (upsert) courses to local DB
@@ -47,10 +78,11 @@ export function useCourseSync() {
                     }
                 });
 
+
                 // ----------------------------------------------------
                 // 1b. Fetch LESSONS for these courses (Metadata Sync)
                 // ----------------------------------------------------
-                const courseIds = remoteCourses.map(c => c.id);
+                // const courseIds = remoteCourses.map(c => c.id); // Moved up
                 if (courseIds.length > 0) {
                     const { data: lessonsData, error: lessonError } = await supabase
                         .from('lessons')
@@ -161,6 +193,39 @@ export function useCourseSync() {
                         });
                         console.log(`Synced ${localQuizzes.length} quizzes.`);
                     }
+                }
+            }
+
+            // ----------------------------------------------------
+            // 1d. Fetch ANNOUNCEMENTS (New)
+            // ----------------------------------------------------
+            if (courseIds.length > 0) {
+                const { data: announcementsData, error: annError } = await supabase
+                    .from('announcements')
+                    .select('*')
+                    .in('course_id', courseIds);
+
+                if (annError) {
+                    console.error('Error fetching announcements:', annError);
+                } else if (announcementsData) {
+                    const localAnnouncements = announcementsData.map(a => ({
+                        id: a.id,
+                        courseId: a.course_id,
+                        teacherId: a.teacher_id,
+                        title: a.title,
+                        content: a.content,
+                        isUrgent: a.is_urgent,
+                        createdAt: new Date(a.created_at).getTime(),
+                        syncStatus: 'synced' as const
+                    }));
+
+                    await db.transaction('rw', db.announcements, async () => {
+                        // Simple strategy: Put all. 
+                        // Ideally we should verify if local Pending ones conflict, but for now server wins or we merge.
+                        // Given unique IDs (UUIDs), bulkPut works well.
+                        await db.announcements.bulkPut(localAnnouncements);
+                    });
+                    console.log(`Synced ${localAnnouncements.length} announcements.`);
                 }
             }
 

@@ -1,6 +1,19 @@
 // src/features/auth/auth.service.ts
 import { supabase } from '../../lib/supabase';
 
+const withTimeout = async <T>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), ms);
+  });
+
+  try {
+    return (await Promise.race([promise, timeout])) as T;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
 export interface UserProfile {
   id: string;
   role: 'student' | 'teacher' | 'admin';
@@ -15,31 +28,37 @@ export const authService = {
    */
   async signIn(email: string, password: string) {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const signInResponse = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email,
+          password,
+        }),
+        10000,
+        'Sign in timed out. Please try again.'
+      );
+      const { data, error } = signInResponse;
 
       if (error) {
-        console.error('Sign-in authentication error:', error);
+        console.error('Sign-in error:', error.message);
         throw error;
       }
 
-      // Fetch profile
-      if (data.user) {
-        const profile = await this.getProfile(data.user.id);
-
-        if (!profile) {
-          console.error('Profile not found for user:', data.user.id);
-          throw new Error('User profile not found. Please contact support or try signing up again.');
-        }
-
-        return { user: data.user, session: data.session, profile };
+      if (!data.user) {
+        throw new Error('Sign-in failed: No user data returned');
       }
 
-      throw new Error('Sign-in failed: No user data returned');
+      // Fetch profile
+      const profile = await this.getProfile(data.user.id);
+
+      if (!profile) {
+        console.error('Profile not found for user:', data.user.id);
+        throw new Error('User profile not found. Please contact support or try signing up again.');
+      }
+
+      console.log('✓ Sign in successful:', data.user.email);
+      return { user: data.user, session: data.session, profile };
     } catch (err) {
-      console.error('Sign-in error:', err);
+      console.error('Sign-in failed:', err);
       throw err;
     }
   },
@@ -167,17 +186,27 @@ export const authService = {
    * Get current session
    */
   async getSession() {
-    console.log('authService.getSession: Requesting session from Supabase');
     try {
-      const { data, error } = await supabase.auth.getSession();
+      const sessionResponse = await withTimeout(
+        supabase.auth.getSession(),
+        10000,
+        'Session check timed out. Please refresh the page.'
+      );
+      const { data, error } = sessionResponse;
       if (error) {
-        console.error('authService.getSession error:', error);
+        console.error('Session retrieval error:', error);
         throw error;
       }
-      console.log('authService.getSession: Session received', data.session ? 'Active' : 'Null');
+      
+      if (data.session) {
+        console.log('✓ Session active:', data.session.user.email);
+      } else {
+        console.log('✗ No active session');
+      }
+      
       return data.session;
     } catch (err) {
-      console.error('authService.getSession execution failed:', err);
+      console.error('Session check failed:', err);
       throw err;
     }
   },
@@ -187,11 +216,16 @@ export const authService = {
    */
   async getProfile(userId: string): Promise<UserProfile | null> {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      const profileResponse = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single() as unknown as Promise<any>,
+        10000,
+        'Profile request timed out. Please try again.'
+      );
+      const { data, error } = profileResponse as { data: UserProfile | null; error: any };
 
       if (error) {
         // PGRST116 = 'No rows found' - this is expected for new users before profile creation

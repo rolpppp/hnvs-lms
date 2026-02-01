@@ -20,13 +20,16 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: false,
+    storage: window.localStorage,
+    storageKey: 'hnvs-lms-auth',
   },
-  // Optimize: Minimal realtime configuration since we aren't using it
-  // This helps prevent pending websocket connections from blocking auth
-  realtime: {
-    params: {
-      eventsPerSecond: 10,
+  global: {
+    headers: {
+      'X-Client-Info': 'hnvs-lms',
     },
   },
 });
+
+// Disable all realtime channels to prevent WebSocket hanging
+supabase.removeAllChannels();

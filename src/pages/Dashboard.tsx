@@ -12,7 +12,7 @@ import { CourseCard } from "../components/CourseCard";
 import { useSync } from "../hooks/useSync";
 import { useStorageWarning } from "../hooks/useStorageWarning";
 import { useCourseSync } from "../hooks/useCourseSync";
-import { db, type Course, type Lesson } from "../lib/db";
+import { db, type Course } from '../lib/db';
 import { useLiveQuery } from "dexie-react-hooks";
 import { supabase } from "../lib/supabase";
 

@@ -63,17 +63,17 @@ export default function SignUpPage() {
 
   // Validate all fields before submission
   const validateAllFields = () => {
-    const isEmailValid = validateField('email', email);
-    const isPasswordValid = validateField('password', password);
-    const isFullNameValid = validateField('fullName', fullName);
+    validateField('email', email);
+    validateField('password', password);
+    validateField('fullName', fullName);
 
-    return isEmailValid && isPasswordValid && isFullNameValid;
+    // Check if any errors exist after validation
+    return !(fieldErrors.email || fieldErrors.password || fieldErrors.fullName);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setFieldErrors({});
 
     // Validate all fields before proceeding
     if (!validateAllFields()) {
@@ -116,7 +116,7 @@ export default function SignUpPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label htmlFor="fullName" className="block text-sm font-medium text-slate-700 mb-2">
                 Full Name
@@ -224,10 +224,11 @@ export default function SignUpPage() {
                 <button
                   type="button"
                   onClick={() => setRole('student')}
+                  aria-pressed={role === 'student'}
                   className={`p-4 rounded-lg border-2 transition-all ${role === 'student'
                     ? 'border-blue-600 bg-blue-50 text-blue-900'
                     : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                    }`}
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                   disabled={loading}
                 >
                   <p className="font-medium">Student</p>
@@ -235,10 +236,11 @@ export default function SignUpPage() {
                 <button
                   type="button"
                   onClick={() => setRole('teacher')}
+                  aria-pressed={role === 'teacher'}
                   className={`p-4 rounded-lg border-2 transition-all ${role === 'teacher'
                     ? 'border-blue-600 bg-blue-50 text-blue-900'
                     : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                    }`}
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                   disabled={loading}
                 >
                   <p className="font-medium">Teacher</p>

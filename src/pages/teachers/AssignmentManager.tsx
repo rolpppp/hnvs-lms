@@ -1,35 +1,46 @@
 // src/pages/teachers/AssignmentManager.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Calendar, Clock, AlertCircle, Save } from 'lucide-react';
 import { db, type Assignment } from '../../lib/db';
 
-export default function AssignmentManager() {
+interface AssignmentManagerProps {
+  courseId?: string;
+}
+
+export default function AssignmentManager({ courseId }: AssignmentManagerProps) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    courseId: '1',
+    courseId: courseId || '1', // Default to current course or dummy '1'
     syncDeadline: '',
     dueDate: '',
   });
 
-  useEffect(() => {
-    loadAssignments();
-  }, []);
+  const loadAssignments = useCallback(async () => {
+    let allAssignments = await db.assignments.toArray();
 
-  const loadAssignments = async () => {
-    const allAssignments = await db.assignments.toArray();
+    // Filter
+    if (courseId) {
+      allAssignments = allAssignments.filter(a => a.courseId === courseId);
+    }
+
     setAssignments(allAssignments);
-  };
+  }, [courseId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line
+    loadAssignments();
+  }, [loadAssignments]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const newAssignment: Assignment = {
       id: `assignment-${Date.now()}`,
-      courseId: formData.courseId,
+      courseId: courseId || formData.courseId,
       title: formData.title,
       description: formData.description,
       createdAt: Date.now(),
@@ -39,12 +50,12 @@ export default function AssignmentManager() {
     };
 
     await db.assignments.add(newAssignment);
-    
+
     // Reset form
     setFormData({
       title: '',
       description: '',
-      courseId: '1',
+      courseId: courseId || '1',
       syncDeadline: '',
       dueDate: '',
     });
@@ -63,28 +74,33 @@ export default function AssignmentManager() {
     });
   };
 
+  // Use state to keep 'now' stable during render cycle and avoid impure function lint
+  const [now] = useState(() => Date.now());
+
   const isOverdue = (deadline?: number) => {
     if (!deadline) return false;
-    return Date.now() > deadline;
+    return now > deadline;
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24">
-      {/* Header */}
-      <div className="bg-blue-900 text-white p-6">
-        <div className="max-w-4xl mx-auto">
-          <Link
-            to="/teacher"
-            className="inline-flex items-center gap-2 text-blue-200 hover:text-white mb-4 transition-colors"
-          >
-            <ArrowLeft size={18} /> Back to Dashboard
-          </Link>
-          <h1 className="text-2xl sm:text-3xl font-bold">Assignment Manager</h1>
-          <p className="text-blue-100 text-sm">Set sync deadlines for offline students</p>
+    <div className="bg-slate-50 min-h-full pb-24">
+      {/* Header - Only show if standalone */}
+      {!courseId && (
+        <div className="bg-blue-900 text-white p-6 mb-6">
+          <div className="max-w-4xl mx-auto">
+            <Link
+              to="/teacher"
+              className="inline-flex items-center gap-2 text-blue-200 hover:text-white mb-4 transition-colors"
+            >
+              <ArrowLeft size={18} /> Back to Dashboard
+            </Link>
+            <h1 className="text-2xl sm:text-3xl font-bold">Assignment Manager</h1>
+            <p className="text-blue-100 text-sm">Set sync deadlines for offline students</p>
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="max-w-4xl mx-auto p-4 space-y-6">
+      <div className={`max-w-4xl mx-auto ${courseId ? '' : 'p-4'} space-y-6`}>
         {/* Create Button */}
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}

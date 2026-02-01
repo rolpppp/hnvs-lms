@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Users, Settings, Plus, Trash2, Edit, Save, FileText, Video, Eye, EyeOff, Search } from 'lucide-react';
+import { ArrowLeft, BookOpen, Users, Settings, Plus, Trash2, Edit, Save, FileText, Video, Eye, EyeOff, Search, Bell, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../features/auth/AuthProvider';
+import AnnouncementManager from './AnnouncementManager';
+import AssignmentManager from './AssignmentManager';
 
 interface Course {
     id: string;
@@ -34,7 +36,7 @@ export default function TeacherCourseDetail() {
     const { user } = useAuth();
     const navigate = useNavigate();
 
-    const [activeTab, setActiveTab] = useState<'content' | 'students' | 'settings'>('content');
+    const [activeTab, setActiveTab] = useState<'content' | 'assignments' | 'announcements' | 'students' | 'settings'>('content');
     const [course, setCourse] = useState<Course | null>(null);
     const [lessons, setLessons] = useState<Lesson[]>([]);
     const [students, setStudents] = useState<StudentMetric[]>([]);
@@ -110,7 +112,7 @@ export default function TeacherCourseDetail() {
                 return {
                     id: enroll.student_id,
                     name: profile?.full_name || 'Unknown Student',
-                    email: `student-${enroll.student_id.slice(0, 4)}@example.com`, // Placeholder
+                    email: `student - ${enroll.student_id.slice(0, 4)} @example.com`, // Placeholder
                     joinedAt: new Date(enroll.enrolled_at).toLocaleDateString(),
                     quizzesTaken: studentSubs.length,
                     avgScore: parseFloat(avg)
@@ -286,7 +288,7 @@ export default function TeacherCourseDetail() {
             if (lessonError) throw lessonError;
 
             // 4. Redirect
-            navigate(`/teacher/courses/${courseId}/quiz/${quiz.id}`);
+            navigate(`/teacher/courses / ${courseId} /quiz/${quiz.id} `);
 
         } catch (err: any) {
             console.error('Error creating quiz:', err);
@@ -304,18 +306,17 @@ export default function TeacherCourseDetail() {
 
     return (
         <div className="min-h-screen bg-slate-50 pb-24">
-            {/* ... Header & Tabs omitted for brevity in replace, but matched by context ... */}
             {/* Header */}
-            <div className="bg-white border-b border-slate-200 sticky top-14 z-30">
-                <div className="max-w-5xl mx-auto px-4 py-4">
-                    <Link to="/teacher/courses" className="text-slate-500 hover:text-blue-600 flex items-center gap-2 mb-2 text-sm">
-                        <ArrowLeft size={16} /> Back to Courses
+            <div className="bg-white shadow-sm sticky top-14 z-30">
+                <div className="max-w-5xl mx-auto px-4 py-6">
+                    <Link to="/teacher" className="text-slate-500 hover:text-blue-600 flex items-center gap-2 mb-2 text-sm">
+                        <ArrowLeft size={16} /> Back to Subjects
                     </Link>
 
                     <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                         <div>
-                            <div className="flex items-center gap-2">
-                                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold uppercase">{course.code}</span>
+                            <div className="flex items-center gap-3">
+                                <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold uppercase">{course.code}</span>
                                 {!isEditing ? (
                                     <h1 className="text-2xl font-bold text-slate-900">{course.title}</h1>
                                 ) : (
@@ -347,7 +348,7 @@ export default function TeacherCourseDetail() {
                                     </button>
                                 </>
                             ) : (
-                                <button onClick={() => setIsEditing(true)} className="px-3 py-1.5 border border-slate-300 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 flex items-center gap-2">
+                                <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-slate-100 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2">
                                     <Edit size={16} /> Edit Info
                                 </button>
                             )}
@@ -355,22 +356,34 @@ export default function TeacherCourseDetail() {
                     </div>
 
                     {/* Tabs */}
-                    <div className="flex items-center gap-6 mt-6 border-b border-transparent">
+                    <div className="flex items-center gap-6 mt-6 border-b border-transparent overflow-x-auto">
                         <button
                             onClick={() => setActiveTab('content')}
-                            className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'content' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                            className={`pb - 3 text - sm font - 2 transition - colors flex items - center gap - 2 whitespace - nowrap ${activeTab === 'content' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'} `}
                         >
                             <BookOpen size={18} /> Content ({lessons.length})
                         </button>
                         <button
+                            onClick={() => setActiveTab('announcements')}
+                            className={`pb - 3 text - sm font - 2 transition - colors flex items - center gap - 2 whitespace - nowrap ${activeTab === 'announcements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'} `}
+                        >
+                            <Bell size={18} /> Announcements
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('assignments')}
+                            className={`pb - 3 text - sm font - 2 transition - colors flex items - center gap - 2 whitespace - nowrap ${activeTab === 'assignments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'} `}
+                        >
+                            <Calendar size={18} /> Assignments
+                        </button>
+                        <button
                             onClick={() => setActiveTab('students')}
-                            className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'students' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                            className={`pb - 3 text - sm font - 2 transition - colors flex items - center gap - 2 whitespace - nowrap ${activeTab === 'students' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'} `}
                         >
                             <Users size={18} /> Students
                         </button>
                         <button
                             onClick={() => setActiveTab('settings')}
-                            className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'settings' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                            className={`pb - 3 text - sm font - 2 transition - colors flex items - center gap - 2 whitespace - nowrap ${activeTab === 'settings' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'} `}
                         >
                             <Settings size={18} /> Settings
                         </button>
@@ -382,49 +395,53 @@ export default function TeacherCourseDetail() {
             <div className="max-w-5xl mx-auto px-4 py-6">
                 {activeTab === 'content' && (
                     <div className="space-y-6">
-                        <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-100">
+                        <div className="flex justify-between items-center bg-gradient-to-r from-blue-800 to-blue-900 p-6 rounded-xl shadow-sm">
                             <div>
-                                <h3 className="font-bold text-blue-900">Course Materials</h3>
-                                <p className="text-sm text-blue-700">Manage lessons, videos, and quizzes.</p>
+                                <h3 className="font-bold text-white text-lg">Subject Materials</h3>
+                                <p className="text-sm text-blue-100">Manage lessons, videos, and quizzes.</p>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Link to={`/teacher/upload?courseId=${courseId}`} className="px-3 py-2 bg-white text-blue-600 border border-blue-200 rounded-lg font-medium hover:bg-blue-50 flex items-center gap-2 text-sm">
-                                    <Plus size={16} /> Add Media
+                            <div className="flex items-center gap-3">
+                                <Link to={`/teacher/upload?courseId=${courseId}`} className="px-4 py-2.5 bg-white/20 backdrop-blur-sm text-white rounded-lg font-medium hover:bg-white/30 transition-all flex items-center gap-2 text-sm">
+                                    <Plus size={18} /> Add Media
                                 </Link>
                                 <button
                                     onClick={handleCreateQuiz}
-                                    className="px-3 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 text-sm shadow-sm"
+                                    className="px-4 py-2.5 bg-white text-blue-600 rounded-lg font-medium hover:shadow-md transition-all flex items-center gap-2 text-sm"
                                 >
-                                    <Plus size={16} /> Create Quiz
+                                    <Plus size={18} /> Create Quiz
                                 </button>
                             </div>
                         </div>
 
                         {lessons.length === 0 ? (
-                            <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl">
-                                <p className="text-slate-400">No content uploaded yet.</p>
+                            <div className="text-center py-16 bg-white rounded-xl">
+                                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <BookOpen className="text-slate-400" size={28} />
+                                </div>
+                                <p className="text-slate-500 font-medium">No content uploaded yet</p>
+                                <p className="text-slate-400 text-sm mt-1">Start by adding media or creating a quiz</p>
                             </div>
                         ) : (
                             <div className="grid gap-3">
                                 {lessons.map((lesson) => (
-                                    <div key={lesson.id} className={`bg-white p-4 rounded-lg border shadow-sm flex items-center justify-between group transition-all ${!lesson.is_visible ? 'opacity-60 border-slate-200 bg-slate-50' : 'border-slate-200 hover:border-blue-300'}`}>
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-lg ${lesson.type === 'video' ? 'bg-purple-100 text-purple-600' : 'bg-orange-100 text-orange-600'}`}>
+                                    <div key={lesson.id} className={`bg-white p-5 rounded-xl shadow-sm hover:shadow-md flex items-center justify-between group transition-all ${!lesson.is_visible ? 'opacity-50' : ''}`}>
+                                        <div className="flex items-center gap-4">
+                                            <div className={`p-3 rounded-xl ${lesson.type === 'video' ? 'bg-purple-500 text-white' : lesson.type === 'quiz' ? 'bg-green-500 text-white' : 'bg-orange-500 text-white'}`}>
                                                 {lesson.type === 'video' ? <Video size={20} /> : <FileText size={20} />}
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <h4 className="font-medium text-slate-900">{lesson.title}</h4>
-                                                    {!lesson.is_visible && <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 rounded uppercase font-bold">Hidden</span>}
+                                                    <h4 className="font-semibold text-slate-900">{lesson.title}</h4>
+                                                    {!lesson.is_visible && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase font-bold">Hidden</span>}
                                                 </div>
-                                                <p className="text-xs text-slate-500 capitalize">{lesson.type} • Lesson {lesson.order}</p>
+                                                <p className="text-sm text-slate-500 capitalize">{lesson.type} • Lesson {lesson.order}</p>
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button
                                                 onClick={() => handleToggleVisibility(lesson)}
-                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                                 title={lesson.is_visible ? "Hide from students" : "Show to students"}
                                             >
                                                 {lesson.is_visible ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -442,7 +459,7 @@ export default function TeacherCourseDetail() {
                                                         });
                                                     }
                                                 }}
-                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                                 title="Edit Title"
                                             >
                                                 <Edit size={18} />
@@ -450,8 +467,8 @@ export default function TeacherCourseDetail() {
                                             {/* Quiz Edit Link */}
                                             {lesson.type === 'quiz' && lesson.quiz_id && (
                                                 <Link
-                                                    to={`/teacher/courses/${courseId}/quiz/${lesson.quiz_id}`}
-                                                    className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                                                    to={`/ teacher / courses / ${courseId} /quiz/${lesson.quiz_id} `}
+                                                    className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                                                     title="Edit Quiz Content"
                                                 >
                                                     <BookOpen size={18} />
@@ -459,7 +476,7 @@ export default function TeacherCourseDetail() {
                                             )}
                                             <button
                                                 onClick={() => handleDeleteLesson(lesson.id)}
-                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                                 title="Delete Lesson"
                                             >
                                                 <Trash2 size={18} />
@@ -472,12 +489,22 @@ export default function TeacherCourseDetail() {
                     </div>
                 )}
 
+                {activeTab === 'announcements' && (
+                    <AnnouncementManager courseId={courseId} />
+                )}
+
+                {activeTab === 'assignments' && (
+                    <AssignmentManager courseId={courseId} />
+                )}
+
                 {activeTab === 'settings' && (
                     <div className="max-w-xl">
-                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <Trash2 size={20} className="text-red-500" /> Danger Zone
-                            </h3>
+                        <div className="bg-white p-6 rounded-xl shadow-sm">
+                            <div className="bg-red-50 p-4 rounded-lg mb-4">
+                                <h3 className="font-bold text-red-900 mb-2 flex items-center gap-2">
+                                    <Trash2 size={20} /> Danger Zone
+                                </h3>
+                            </div>
                             <p className="text-sm text-slate-600 mb-4">
                                 Deleting this course will permanently remove:
                                 <ul className="list-disc pl-5 mt-2 space-y-1">
@@ -488,7 +515,7 @@ export default function TeacherCourseDetail() {
                             </p>
                             <button
                                 onClick={handleDeleteCourse}
-                                className="w-full py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg font-bold hover:bg-red-100 transition-colors"
+                                className="w-full py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-colors shadow-sm hover:shadow-md"
                             >
                                 Delete Course Permanently
                             </button>
@@ -498,15 +525,15 @@ export default function TeacherCourseDetail() {
 
                 {activeTab === 'students' && (
                     <div className="space-y-6">
-                        <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center gap-4 bg-white p-5 rounded-xl shadow-sm">
                             <div className="flex-1 relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                 <input
                                     type="text"
                                     placeholder="Search students..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
                                 />
                             </div>
                             <div className="text-sm text-slate-500 font-medium">
@@ -518,13 +545,17 @@ export default function TeacherCourseDetail() {
                             s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             s.email.toLowerCase().includes(searchQuery.toLowerCase())
                         ).length === 0 ? (
-                            <div className="text-center py-12 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">
-                                {searchQuery ? 'No students found matching your search.' : 'No students enrolled in this course yet.'}
+                            <div className="text-center py-16 bg-white rounded-xl">
+                                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Users className="text-slate-400" size={28} />
+                                </div>
+                                <p className="text-slate-500 font-medium">{searchQuery ? 'No students found matching your search' : 'No students enrolled yet'}</p>
+                                <p className="text-slate-400 text-sm mt-1">{searchQuery ? 'Try a different search term' : 'Students will appear here once they enroll'}</p>
                             </div>
                         ) : (
-                            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                            <div className="bg-white rounded-xl overflow-hidden shadow-sm">
                                 <table className="w-full text-left text-sm">
-                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase">
+                                    <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-xs">
                                         <tr>
                                             <th className="px-6 py-4">Student Name</th>
                                             <th className="px-6 py-4">Joined At</th>
@@ -532,7 +563,7 @@ export default function TeacherCourseDetail() {
                                             <th className="px-6 py-4 text-right">Avg Score</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100">
+                                    <tbody className="divide-y divide-slate-50">
                                         {students.filter(s =>
                                             s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                                             s.email.toLowerCase().includes(searchQuery.toLowerCase())
@@ -546,7 +577,7 @@ export default function TeacherCourseDetail() {
                                                     {student.joinedAt}
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
-                                                    <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${student.quizzesTaken > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                    <span className={`inline - block px - 2 py - 1 rounded text - xs font - bold ${student.quizzesTaken > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'} `}>
                                                         {student.quizzesTaken}
                                                     </span>
                                                 </td>
