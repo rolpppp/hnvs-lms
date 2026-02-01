@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, Save } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Save, Settings } from 'lucide-react';
 import { db, type Quiz } from '../lib/db';
 import { useSync } from '../hooks/useSync';
 import { getCurrentUserId } from '../lib/uuid';
-import { useAuth } from '../features/auth/AuthProvider';
 
 export default function QuizPlayer() {
   const { quizId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { triggerSync, isOnline } = useSync();
+  // const { user } = useAuth(); // Not needed if we use getCurrentUserId()
+  const { triggerSync } = useSync();
+
+  const { isOnline } = useSync();
 
   // State
   const [quiz, setQuiz] = useState<Quiz | null>(null);
@@ -20,6 +21,8 @@ export default function QuizPlayer() {
   const [isFinished, setIsFinished] = useState(false);
   const [score, setScore] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [previousAttempts, setPreviousAttempts] = useState<number>(0);
+  const [bestScore, setBestScore] = useState<number | null>(null);
 
   useEffect(() => {
     if (quizId) {
@@ -31,8 +34,28 @@ export default function QuizPlayer() {
     if (!quizId) return;
     try {
       setLoading(true);
-      const q = await db.quizzes.get(quizId);
-      if (q) setQuiz(q);
+      const studentId = await getCurrentUserId();
+      if (!studentId) return; // Should be handled by Auth guard
+
+      const [q, existingAttempts] = await Promise.all([
+        db.quizzes.get(quizId),
+        db.quizAttempts
+          .where('quizId')
+          .equals(quizId)
+          .filter(a => a.studentId === studentId)
+          .toArray()
+      ]);
+
+      if (q) {
+        setQuiz(q);
+        setPreviousAttempts(existingAttempts.length);
+
+        if (existingAttempts.length > 0) {
+          // Calculate best score
+          const maxScore = Math.max(...existingAttempts.map(a => a.score));
+          setBestScore(maxScore);
+        }
+      }
       else console.warn("Quiz not found in local DB", quizId);
     } catch (e) {
       console.error("Error loading quiz", e);
@@ -52,8 +75,41 @@ export default function QuizPlayer() {
 
   const question = quiz.questions[currentQIndex];
   const totalQ = quiz.questions.length;
+  const allowed = quiz.allowedAttempts || 1;
+  const remaining = allowed - previousAttempts;
 
   if (totalQ === 0) return <div className="p-12 text-center">This quiz has no questions yet.</div>;
+
+  if (remaining <= 0 && !isFinished) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center text-center">
+        <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-sm border border-red-100">
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Settings size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800">Maximum Attempts Reached</h2>
+          <p className="text-slate-500 mt-2">
+            You have used all {allowed} allowed attempts for this quiz.
+          </p>
+
+          {bestScore !== null && (
+            <div className="mt-6 bg-slate-50 rounded-xl p-4 border border-slate-100">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Your Best Score</div>
+              <div className="text-3xl font-black text-slate-800">
+                {bestScore} <span className="text-lg text-slate-400 font-medium">/ {totalQ}</span>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => navigate(-1)}
+            className="mt-6 w-full bg-slate-900 text-white py-3 rounded-xl font-medium"
+          >
+            Back to Course
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Handle Answer Selection
   const handleSelect = (optionIndex: number) => {
@@ -104,6 +160,39 @@ export default function QuizPlayer() {
       if (isOnline) {
         triggerSync();
       }
+
+      // 4. Mark Lesson as Completed
+      try {
+        const lesson = await db.lessons.where('quizId').equals(quiz.id).first();
+        if (lesson) {
+          const existingProgress = await db.lessonProgress
+            .where({ lessonId: lesson.id, studentId: studentId })
+            .first();
+
+          if (existingProgress) {
+            await db.lessonProgress.update(existingProgress.id!, {
+              completed: true,
+              completedAt: Date.now(),
+              lastAccessed: Date.now(),
+              // We don't track timeSpent for quizzes yet, but could add that later
+            });
+          } else {
+            await db.lessonProgress.add({
+              lessonId: lesson.id,
+              courseId: quiz.courseId,
+              studentId: studentId,
+              completed: true,
+              completedAt: Date.now(),
+              timeSpent: 0,
+              lastAccessed: Date.now(),
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to update lesson progress", err);
+        // Don't block the user if this fails
+      }
+
     } catch (e) {
       console.error("Failed to save quiz", e);
       alert("Error saving quiz. Please try again.");
@@ -154,8 +243,11 @@ export default function QuizPlayer() {
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-400 hover:text-slate-600">
           <ArrowLeft size={20} />
         </button>
-        <div className="flex-1 text-center font-bold text-slate-700">
-          {quiz.title} - Q{currentQIndex + 1}
+        <div className="flex-1 text-center">
+          <div className="font-bold text-slate-700">{quiz.title}</div>
+          <div className="text-xs text-slate-400 font-medium ml-2">
+            Attempt {previousAttempts + 1} of {allowed}
+          </div>
         </div>
         <div className="w-8" />
       </div>

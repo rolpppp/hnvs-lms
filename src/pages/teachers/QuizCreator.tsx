@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Save, Trash2, CheckCircle, Circle, GripVertical, Settings } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Trash2, CheckCircle, Circle, GripVertical } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface Option {
@@ -21,6 +21,7 @@ interface Quiz {
     title: string;
     published: boolean;
     course_id: string;
+    allowed_attempts: number;
 }
 
 export default function QuizCreator() {
@@ -105,7 +106,11 @@ export default function QuizCreator() {
             // 1. Update Quiz
             const { error: quizErr } = await supabase
                 .from('quizzes')
-                .update({ title: quiz.title, published: quiz.published })
+                .update({
+                    title: quiz.title,
+                    published: quiz.published,
+                    allowed_attempts: quiz.allowed_attempts
+                })
                 .eq('id', quiz.id);
             if (quizErr) throw quizErr;
 
@@ -255,7 +260,18 @@ export default function QuizCreator() {
                                 placeholder="Quiz Title"
                             />
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2">
+                                <span className="text-xs font-bold text-slate-500 uppercase">Attempts:</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="10"
+                                    value={quiz.allowed_attempts || 1}
+                                    onChange={e => setQuiz({ ...quiz, allowed_attempts: parseInt(e.target.value) || 1 })}
+                                    className="w-12 bg-transparent font-medium text-center focus:outline-none border-b border-transparent focus:border-blue-500"
+                                />
+                            </div>
                             <button
                                 onClick={handleTogglePublish}
                                 className={`px-4 py-2 rounded-lg font-medium text-sm border ${quiz.published ? 'border-yellow-300 text-yellow-700 hover:bg-yellow-50' : 'border-green-300 text-green-700 hover:bg-green-50'}`}

@@ -42,19 +42,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setProfile(profile);
             } else {
               console.error('No profile found for authenticated user');
+              // Don't sign out immediately on profile error, just set error state
+              // This allows for retrying without relogin
               setError('Profile not found. Please contact support.');
-              // Clear the session if no profile exists
-              await authService.signOut();
-              setSession(null);
-              setUser(null);
             }
           } catch (err: any) {
             console.error('Error loading profile:', err);
             setError(err.message || 'Failed to load profile');
-            // Clear session on profile error
-            await authService.signOut();
-            setSession(null);
-            setUser(null);
+            // Do NOT sign out here. Let the user retry.
           }
         }
       } catch (err: any) {
@@ -69,10 +64,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const timeoutId = setTimeout(() => {
       if (loading) {
         console.error('Auth initialization timed out');
-        setLoading(false);
+        // Don't completely stop loading, just show error
+        // This allows the actual request to potentially finish if it's just very slow
         setError('Connection timed out. Please check your internet connection.');
+        setLoading(false);
       }
-    }, 10000); // 10 seconds timeout
+    }, 60000); // 10 seconds timeout
 
     initAuth();
 

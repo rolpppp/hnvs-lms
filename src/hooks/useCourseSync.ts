@@ -108,7 +108,7 @@ export function useCourseSync() {
                     // Fetch Quizzes
                     const { data: quizzesData, error: quizError } = await supabase
                         .from('quizzes')
-                        .select('id, course_id, title, published')
+                        .select('id, course_id, title, published, allowed_attempts')
                         .in('course_id', courseIds)
                         .eq('published', true); // Only sync published quizzes
 
@@ -142,6 +142,7 @@ export function useCourseSync() {
                                 id: q.id,
                                 courseId: q.course_id,
                                 title: q.title,
+                                allowedAttempts: q.allowed_attempts || 1, // Default to 1 if missing
                                 questions: qs.map(quest => {
                                     const opts = optionsData?.filter(opt => opt.question_id === quest.id) || [];
                                     const correctOpt = opts.findIndex(o => o.is_correct);

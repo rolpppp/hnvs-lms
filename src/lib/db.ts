@@ -73,6 +73,7 @@ export interface Quiz {
     options: string[];
     correctOption: number;
   }>;
+  allowedAttempts?: number; // New field
 }
 
 // THE MOST IMPORTANT TABLE FOR OFFLINE

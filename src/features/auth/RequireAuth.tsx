@@ -25,15 +25,23 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
             <h2 className="text-lg font-semibold text-red-900 mb-2">Authentication Error</h2>
             <p className="text-red-700 mb-4">{error}</p>
-            <button
-              onClick={() => {
-                signOut();
-                window.location.href = '/#/signin';
-              }}
-              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
-            >
-              Return to Sign In
-            </button>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors w-full font-medium"
+              >
+                Retry Connection
+              </button>
+              <button
+                onClick={() => {
+                  signOut();
+                  window.location.href = '/#/signin';
+                }}
+                className="bg-transparent text-red-700 border border-red-300 px-4 py-2 rounded hover:bg-red-50 transition-colors w-full text-sm"
+              >
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       </div>
