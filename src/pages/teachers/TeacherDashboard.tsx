@@ -17,6 +17,12 @@ export default function TeacherDashboard() {
   const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+  const [code, setCode] = useState('');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [optError, setOptError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -47,6 +53,43 @@ export default function TeacherDashboard() {
     }
   };
 
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setIsSubmitting(true);
+    setOptError(null);
+
+    try {
+      const { data, error } = await supabase
+        .from('courses')
+        .insert({
+          code,
+          title,
+          description,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setCourses([data, ...courses]);
+      setIsCreating(false);
+      setCode('');
+      setTitle('');
+      setDescription('');
+    } catch (err: any) {
+      console.error('Error creating course:', err);
+      if (err.code === '23505') {
+        setOptError('Subject code already exists. Please use a unique code.');
+      } else {
+        setOptError('Failed to create subject. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
       {/* Header */}
@@ -57,27 +100,84 @@ export default function TeacherDashboard() {
               <h1 className="text-3xl font-bold text-slate-900">My Subjects</h1>
               <p className="text-slate-500 mt-1">Manage your classes, content, and students</p>
             </div>
-            <Link
-              to="/teacher/courses"
-              // Note: Ideally /teacher/courses/new or a modal. 
-              // For now, linking to existing CourseManager might be redundant if this IS the dashboard.
-              // Let's assume CourseManager IS the list, so we might want a "Create Course" button here 
-              // that opens a modal or navigates to a create page.
-              // Since CourseManager likely has create logic, let's keep it simple for now.
+            <button
+              onClick={() => setIsCreating(true)}
               className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
-              onClick={(e) => {
-                e.preventDefault();
-                // For prototype, just alert or navigate if we have a create page
-                const title = prompt("Enter Course Title:");
-                if (title) alert("Imagine this created a course: " + title);
-              }}
             >
               <Plus size={20} />
-              New Course
-            </Link>
+              New Subject
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Create Subject Form */}
+      {isCreating && (
+        <div className="max-w-6xl mx-auto px-4 pt-6">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <h2 className="text-lg font-bold text-slate-800 mb-4">Create New Subject</h2>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Subject Code</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={10}
+                    placeholder="e.g. AUTO-101"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Subject Title</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Automotive Basics"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                <textarea
+                  rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {optError && (
+                <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg">
+                  {optError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreating(false)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : 'Create Subject'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Course Grid */}
       <div className="max-w-6xl mx-auto px-4 py-8">

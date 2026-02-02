@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, BookOpen, Users, Settings, Plus, Trash2, Edit, Save, FileText, Video, Eye, EyeOff, Search, Bell, Calendar, ExternalLink } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -49,20 +49,40 @@ export default function TeacherCourseDetail() {
     const [editTitle, setEditTitle] = useState('');
     const [editDesc, setEditDesc] = useState('');
 
-    useEffect(() => {
-        if (courseId && user) {
-            fetchCourseData();
-        }
-    }, [courseId, user]);
+    const fetchCourseData = useCallback(async () => {
+        try {
+            setLoading(true);
+            // Fetch Course
+            const { data: courseData, error: courseError } = await supabase
+                .from('courses')
+                .select('*')
+                .eq('id', courseId)
+                .single();
 
-    // Fetch Student Data when tab changes to 'students'
-    useEffect(() => {
-        if (activeTab === 'students' && courseId) {
-            fetchStudentData();
-        }
-    }, [activeTab, courseId]);
+            if (courseError) throw courseError;
+            setCourse(courseData);
+            setEditTitle(courseData.title);
+            setEditDesc(courseData.description || '');
 
-    const fetchStudentData = async () => {
+            // Fetch Lessons
+            const { data: lessonData, error: lessonError } = await supabase
+                .from('lessons')
+                .select('*')
+                .eq('course_id', courseId)
+                .order('order', { ascending: true });
+
+            if (lessonError) throw lessonError;
+            setLessons(lessonData || []);
+
+        } catch (err) {
+            console.error('Error loading course:', err);
+            // navigate('/teacher/courses'); 
+        } finally {
+            setLoading(false);
+        }
+    }, [courseId]);
+
+    const fetchStudentData = useCallback(async () => {
         if (!courseId) return;
         try {
             // 1. Fetch Enrollments
@@ -107,13 +127,13 @@ export default function TeacherCourseDetail() {
                 const studentSubs = submissions.filter(s => s.student_id === enroll.student_id);
 
                 // Calculate Average
-                const totalScore = studentSubs.reduce((acc, curr) => acc + curr.score, 0);
+                const totalScore = studentSubs.reduce((acc: number, curr: any) => acc + curr.score, 0);
                 const avg = studentSubs.length > 0 ? (totalScore / studentSubs.length).toFixed(1) : '0.0';
 
                 return {
                     id: enroll.student_id,
                     name: profile?.full_name || 'Unknown Student',
-                    email: `student - ${enroll.student_id.slice(0, 4)} @example.com`, // Placeholder
+                    email: `student-${enroll.student_id.slice(0, 4)}@example.com`, // Placeholder
                     joinedAt: new Date(enroll.enrolled_at).toLocaleDateString(),
                     quizzesTaken: studentSubs.length,
                     avgScore: parseFloat(avg)
@@ -125,40 +145,20 @@ export default function TeacherCourseDetail() {
         } catch (err) {
             console.error("Error fetching students:", err);
         }
-    };
+    }, [courseId]);
 
-    const fetchCourseData = async () => {
-        try {
-            setLoading(true);
-            // Fetch Course
-            const { data: courseData, error: courseError } = await supabase
-                .from('courses')
-                .select('*')
-                .eq('id', courseId)
-                .single();
-
-            if (courseError) throw courseError;
-            setCourse(courseData);
-            setEditTitle(courseData.title);
-            setEditDesc(courseData.description || '');
-
-            // Fetch Lessons
-            const { data: lessonData, error: lessonError } = await supabase
-                .from('lessons')
-                .select('*')
-                .eq('course_id', courseId)
-                .order('order', { ascending: true });
-
-            if (lessonError) throw lessonError;
-            setLessons(lessonData || []);
-
-        } catch (err) {
-            console.error('Error loading course:', err);
-            // navigate('/teacher/courses'); 
-        } finally {
-            setLoading(false);
+    useEffect(() => {
+        if (courseId && user) {
+            fetchCourseData();
         }
-    };
+    }, [courseId, user, fetchCourseData]);
+
+    // Fetch Student Data when tab changes to 'students'
+    useEffect(() => {
+        if (activeTab === 'students' && courseId) {
+            fetchStudentData();
+        }
+    }, [activeTab, courseId, fetchStudentData]);
 
     const handleUpdateCourse = async () => {
         if (!courseId) return;

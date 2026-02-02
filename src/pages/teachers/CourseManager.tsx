@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { ArrowLeft, Plus, BookOpen, Edit, Trash2, Loader } from 'lucide-react';
@@ -24,6 +24,7 @@ export default function CourseManager() {
     const [description, setDescription] = useState('');
     const [optError, setOptError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const navigate = useNavigate();
 
     useEffect(() => {
         fetchCourses();
@@ -76,7 +77,7 @@ export default function CourseManager() {
             console.error('Error creating course:', err);
             // specific error for duplicate code
             if (err.code === '23505') {
-                setOptError('Course code already exists. Please use a unique code.');
+                setOptError('Subject code already exists. Please use a unique code.');
             } else {
                 setOptError('Failed to create course. Please try again.');
             }
@@ -86,7 +87,7 @@ export default function CourseManager() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this course? This action cannot be undone.')) return;
+        if (!confirm('Are you sure you want to delete this subject? This action cannot be undone.')) return;
 
         try {
             const { error } = await supabase
@@ -99,7 +100,7 @@ export default function CourseManager() {
             console.error('Error deleting course:', err);
             alert('Failed to delete course');
         }
-        console.log("Course deleted successfully")
+        console.log("Subject deleted successfully")
     };
 
     return (
@@ -109,20 +110,21 @@ export default function CourseManager() {
                 <div className="max-w-4xl mx-auto">
                     <Link
                         to="/teacher"
-                        className="inline-flex items-center gap-2 text-blue-200 hover:text-white mb-4 transition-colors"
+                        className="inline-flex items-center gap-2 text-blue-200 hover:text-white transition-colors"
                     >
-                        <ArrowLeft size={18} /> Back to Dashboard
+                        <ArrowLeft size={18} />
+                        <span className="hidden sm:inline">Back to Dashboard</span>
                     </Link>
                     <div className="flex justify-between items-end">
                         <div>
-                            <h1 className="text-2xl sm:text-3xl font-bold">Course Management</h1>
-                            <p className="text-blue-100 text-sm">Create and manage your course offerings</p>
+                            <h1 className="text-2xl sm:text-3xl font-bold">Subject Management</h1>
+                            <p className="text-blue-100 text-sm">Create and manage your subject offerings</p>
                         </div>
                         <button
                             onClick={() => setIsCreating(true)}
                             className="bg-white text-blue-900 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-blue-50 transition-colors"
                         >
-                            <Plus size={18} /> New Course
+                            <Plus size={18} /> New Subject
                         </button>
                     </div>
                 </div>
@@ -132,11 +134,11 @@ export default function CourseManager() {
                 {/* Create Modal / Form Area */}
                 {isCreating && (
                     <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 mb-6 animate-in slide-in-from-top-4">
-                        <h2 className="text-lg font-bold text-slate-800 mb-4">Create New Course</h2>
+                        <h2 className="text-lg font-bold text-slate-800 mb-4">Create New Subject</h2>
                         <form onSubmit={handleCreate} className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Course Code</label>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Subject Code</label>
                                     <input
                                         type="text"
                                         required
@@ -148,7 +150,7 @@ export default function CourseManager() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Course Title</label>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Subject Title</label>
                                     <input
                                         type="text"
                                         required
@@ -188,7 +190,7 @@ export default function CourseManager() {
                                     disabled={isSubmitting}
                                     className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                                 >
-                                    {isSubmitting ? <Loader className="animate-spin" size={16} /> : 'Create Course'}
+                                    {isSubmitting ? <Loader className="animate-spin" size={16} /> : 'Create Subject'}
                                 </button>
                             </div>
                         </form>
@@ -199,18 +201,18 @@ export default function CourseManager() {
                 {loading ? (
                     <div className="text-center py-12">
                         <Loader className="animate-spin h-8 w-8 text-blue-900 mx-auto" />
-                        <p className="text-slate-500 mt-2">Loading courses...</p>
+                        <p className="text-slate-500 mt-2">Loading subjects...</p>
                     </div>
                 ) : courses.length === 0 ? (
                     <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300">
                         <BookOpen className="h-12 w-12 text-slate-300 mx-auto mb-3" />
-                        <h3 className="text-lg font-medium text-slate-900">No courses yet</h3>
-                        <p className="text-slate-500 mb-4">Get started by creating your first course.</p>
+                        <h3 className="text-lg font-medium text-slate-900">No subjects yet</h3>
+                        <p className="text-slate-500 mb-4">Get started by creating your first subject.</p>
                         <button
                             onClick={() => setIsCreating(true)}
                             className="text-blue-600 font-bold hover:underline"
                         >
-                            Create a Course
+                            Create a Subject
                         </button>
                     </div>
                 ) : (

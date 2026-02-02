@@ -245,10 +245,10 @@ export default function ContentUpload() {
       <div className="bg-blue-900 text-white p-6">
         <div className="max-w-4xl mx-auto">
           <Link
-            to="/teacher"
+            to={courseId ? `/teacher/courses/${courseId}` : '/teacher'}
             className="inline-flex items-center gap-2 text-blue-200 hover:text-white mb-4 transition-colors"
           >
-            <ArrowLeft size={18} /> Back to Dashboard
+            <ArrowLeft size={18} /> Back to Subject
           </Link>
           <h1 className="text-2xl sm:text-3xl font-bold">Content Upload</h1>
           <p className="text-blue-100 text-sm">Upload materials to Supabase Storage</p>

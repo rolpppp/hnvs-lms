@@ -33,6 +33,8 @@ export default function QuizCreator() {
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [saveMessage, setSaveMessage] = useState<string | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
 
     useEffect(() => {
         if (quizId) fetchQuizData();
@@ -99,8 +101,11 @@ export default function QuizCreator() {
         }
     };
 
-    const handleSave = async () => {
+    const handleSave = async (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (!quiz) return;
+        setSaveMessage(null);
+        setSaveError(null);
         setSaving(true);
         try {
             // 1. Update Quiz
@@ -167,11 +172,11 @@ export default function QuizCreator() {
             // For MVP, tracking deletions is better, but fetching fresh is robust.
 
             await fetchQuizData(); // Refresh IDs
-            alert('Quiz saved successfully!');
+            setSaveMessage('Quiz saved successfully.');
 
         } catch (err: any) {
             console.error('Save failed:', err);
-            alert('Save failed: ' + err.message);
+            setSaveError(err.message || 'Save failed.');
         } finally {
             setSaving(false);
         }
@@ -279,7 +284,7 @@ export default function QuizCreator() {
                                 {quiz.published ? 'Unpublish' : 'Publish'}
                             </button>
                             <button
-                                onClick={handleSave}
+                                type="submit"
                                 disabled={saving}
                                 className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
                             >
@@ -292,7 +297,18 @@ export default function QuizCreator() {
             </div>
 
             {/* Content */}
-            <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+            <form onSubmit={handleSave} className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+                {saveMessage && (
+                    <div className="bg-green-50 text-green-700 text-sm rounded-lg px-4 py-3">
+                        {saveMessage}
+                    </div>
+                )}
+                {saveError && (
+                    <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3">
+                        {saveError}
+                    </div>
+                )}
+
                 {questions.map((q, qIndex) => (
                     <div key={q.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                         <div className="bg-slate-50 p-4 border-b border-slate-200 flex items-start gap-3">
@@ -369,12 +385,13 @@ export default function QuizCreator() {
                 ))}
 
                 <button
+                    type="button"
                     onClick={addQuestion}
                     className="w-full py-4 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 font-medium hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
                 >
                     <Plus size={20} /> Add New Question
                 </button>
-            </div>
+            </form>
         </div>
     );
 }

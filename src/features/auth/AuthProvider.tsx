@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const profile = await authService.getProfile(userId);
         if (!mounted) return;
-        
+
         if (profile) {
           setProfile(profile);
           setError(null);
@@ -44,10 +44,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error('No profile found for authenticated user');
           setError('Profile not found. Please contact support.');
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!mounted) return;
-        console.error('Error loading profile:', err);
-        setError(err.message || 'Failed to load profile');
+        const error = err as Error;
+        console.error('Error loading profile:', error);
+        setError(error.message || 'Failed to load profile');
       }
     };
 
@@ -57,12 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { subscription } } = authService.onAuthStateChange(
           async (event, session) => {
             if (!mounted) return;
-            
+
             console.log('Auth state changed:', event, session?.user?.id ? 'User ID: ' + session.user.id : 'No user');
-            
+
             // Clear timeout on any auth event
             if (timeoutId) clearTimeout(timeoutId);
-            
+
             setSession(session);
             setUser(session?.user ?? null);
             setLoading(false);
@@ -86,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Now check for existing session
         const session = await authService.getSession();
-        
+
         if (!mounted) {
           subscription.unsubscribe();
           return;
@@ -110,10 +111,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLoading(false);
         }
 
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!mounted) return;
-        console.error('Error loading session:', err);
-        setError(err.message || 'Failed to load session');
+        const error = err as Error;
+        console.error('Error loading session:', error);
+        setError(error.message || 'Failed to load session');
         setLoading(false);
       }
     };

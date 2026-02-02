@@ -2,7 +2,9 @@
 import { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from './AuthProvider';
-import { BookOpen, Mail, Lock, AlertCircle } from 'lucide-react';
+import { Mail, Lock, AlertCircle } from 'lucide-react';
+import hnvsLogo from '../../assets/hnvs.png';
+import hnvsBackground from '../../assets/hnvs_background.jpg';
 
 export default function SignInPage() {
   const navigate = useNavigate();
@@ -50,12 +52,20 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div
+      className="min-h-screen relative flex items-center justify-center p-4"
+      style={{
+        backgroundImage: `url(${hnvsBackground})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }}
+    >
+      <div className="absolute inset-0 bg-blue-900/70" />
+      <div className="w-full max-w-md relative z-10">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
-            <BookOpen className="text-blue-900" size={32} />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4 overflow-hidden">
+            <img src={hnvsLogo} alt="HNVS LMS" className="w-10 h-10 object-contain" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">HNVS LMS</h1>
           <p className="text-blue-200">Sign in to your account</p>
