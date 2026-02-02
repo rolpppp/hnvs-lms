@@ -136,21 +136,6 @@ export default function SignInPage() {
               </Link>
             </p>
           </div>
-
-          {/* Demo Credentials */}
-          <div className="mt-8 pt-6 border-t border-slate-200">
-            <p className="text-xs text-slate-500 text-center mb-3">Demo Accounts (for testing)</p>
-            <div className="space-y-2 text-xs">
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <p className="font-medium text-blue-900">Student Account</p>
-                <p className="text-blue-700">student@test.com / student123</p>
-              </div>
-              <div className="bg-green-50 p-3 rounded-lg">
-                <p className="font-medium text-green-900">Teacher Account</p>
-                <p className="text-green-700">teacher@test.com / teacher123</p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
