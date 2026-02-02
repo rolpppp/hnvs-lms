@@ -1,34 +1,70 @@
 // src/pages/teachers/AssignmentManager.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Calendar, Clock, AlertCircle, Save } from 'lucide-react';
-import { db, type Assignment } from '../../lib/db';
+import { ArrowLeft, Plus, Calendar, AlertCircle, Save, ExternalLink } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../features/auth/AuthProvider';
 
 interface AssignmentManagerProps {
   courseId?: string;
 }
 
+interface AssignmentRecord {
+  id: string;
+  course_id: string;
+  title: string;
+  description: string | null;
+  due_at: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+interface SubmissionRecord {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  text_answer: string | null;
+  file_path: string | null;
+  file_name: string | null;
+  mime_type: string | null;
+  score: number | null;
+  feedback: string | null;
+  graded_at: string | null;
+  created_at: string;
+  profiles?: {
+    full_name: string | null;
+    school_id: string | null;
+  } | null;
+}
+
 export default function AssignmentManager({ courseId }: AssignmentManagerProps) {
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const { user } = useAuth();
+  const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
+  const [submissions, setSubmissions] = useState<SubmissionRecord[]>([]);
+  const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     courseId: courseId || '1', // Default to current course or dummy '1'
-    syncDeadline: '',
     dueDate: '',
   });
+  const [gradingState, setGradingState] = useState<Record<string, { score: string; feedback: string }>>({});
 
   const loadAssignments = useCallback(async () => {
-    let allAssignments = await db.assignments.toArray();
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('assignments')
+      .select('*')
+      .eq('course_id', courseId || formData.courseId)
+      .order('created_at', { ascending: false });
 
-    // Filter
-    if (courseId) {
-      allAssignments = allAssignments.filter(a => a.courseId === courseId);
+    if (error) {
+      console.error('Error loading assignments:', error);
+      return;
     }
-
-    setAssignments(allAssignments);
-  }, [courseId]);
+    setAssignments(data || []);
+  }, [courseId, formData.courseId, user]);
 
   useEffect(() => {
     // eslint-disable-next-line
@@ -37,33 +73,35 @@ export default function AssignmentManager({ courseId }: AssignmentManagerProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
 
-    const newAssignment: Assignment = {
-      id: `assignment-${Date.now()}`,
-      courseId: courseId || formData.courseId,
-      title: formData.title,
-      description: formData.description,
-      createdAt: Date.now(),
-      syncDeadline: formData.syncDeadline ? new Date(formData.syncDeadline).getTime() : undefined,
-      dueDate: formData.dueDate ? new Date(formData.dueDate).getTime() : undefined,
-      isPublished: true,
-    };
+    const { error } = await supabase
+      .from('assignments')
+      .insert({
+        course_id: courseId || formData.courseId,
+        title: formData.title,
+        description: formData.description,
+        due_at: formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
+        created_by: user.id,
+      });
 
-    await db.assignments.add(newAssignment);
+    if (error) {
+      console.error('Error creating assignment:', error);
+      return;
+    }
 
     // Reset form
     setFormData({
       title: '',
       description: '',
       courseId: courseId || '1',
-      syncDeadline: '',
       dueDate: '',
     });
     setShowCreateForm(false);
     loadAssignments();
   };
 
-  const formatDate = (timestamp?: number) => {
+  const formatDate = (timestamp?: number | string | null) => {
     if (!timestamp) return 'Not set';
     return new Date(timestamp).toLocaleDateString('en-US', {
       month: 'short',
@@ -77,9 +115,55 @@ export default function AssignmentManager({ courseId }: AssignmentManagerProps) 
   // Use state to keep 'now' stable during render cycle and avoid impure function lint
   const [now] = useState(() => Date.now());
 
-  const isOverdue = (deadline?: number) => {
+  const isOverdue = (deadline?: number | string | null) => {
     if (!deadline) return false;
-    return now > deadline;
+    return now > new Date(deadline).getTime();
+  };
+
+  const loadSubmissions = async (assignmentId: string) => {
+    const { data, error } = await supabase
+      .from('assignment_submissions')
+      .select('*, profiles:student_id(full_name, school_id)')
+      .eq('assignment_id', assignmentId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error loading submissions:', error);
+      return;
+    }
+    setSubmissions(data || []);
+  };
+
+  const handleOpenSubmissions = (assignmentId: string) => {
+    setActiveAssignmentId(prev => (prev === assignmentId ? null : assignmentId));
+    if (activeAssignmentId !== assignmentId) {
+      loadSubmissions(assignmentId);
+    }
+  };
+
+  const handleGrade = async (submissionId: string) => {
+    if (!user) return;
+    const grading = gradingState[submissionId];
+    const scoreValue = grading?.score ? Number(grading.score) : null;
+
+    const { error } = await supabase
+      .from('assignment_submissions')
+      .update({
+        score: scoreValue,
+        feedback: grading?.feedback || null,
+        graded_by: user.id,
+        graded_at: new Date().toISOString(),
+      })
+      .eq('id', submissionId);
+
+    if (error) {
+      console.error('Error grading submission:', error);
+      return;
+    }
+
+    if (activeAssignmentId) {
+      loadSubmissions(activeAssignmentId);
+    }
   };
 
   return (
@@ -146,22 +230,6 @@ export default function AssignmentManager({ courseId }: AssignmentManagerProps) 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    <Clock size={16} className="inline mr-1" />
-                    Sync Deadline
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={formData.syncDeadline}
-                    onChange={(e) => setFormData({ ...formData, syncDeadline: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    When students should sync their work
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
                     <Calendar size={16} className="inline mr-1" />
                     Final Due Date
                   </label>
@@ -215,7 +283,7 @@ export default function AssignmentManager({ courseId }: AssignmentManagerProps) 
                     <h3 className="font-bold text-slate-900 text-lg">{assignment.title}</h3>
                     <p className="text-slate-600 text-sm mt-1">{assignment.description}</p>
                   </div>
-                  {isOverdue(assignment.syncDeadline) && (
+                  {isOverdue(assignment.due_at) && (
                     <span className="flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded">
                       <AlertCircle size={14} />
                       Overdue
@@ -225,28 +293,118 @@ export default function AssignmentManager({ courseId }: AssignmentManagerProps) 
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-100">
                   <div className="flex items-center gap-2 text-sm">
-                    <Clock size={16} className="text-yellow-600" />
-                    <div>
-                      <p className="text-slate-500 text-xs">Sync Deadline</p>
-                      <p className="font-medium text-slate-900">
-                        {formatDate(assignment.syncDeadline)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
                     <Calendar size={16} className="text-blue-600" />
                     <div>
                       <p className="text-slate-500 text-xs">Due Date</p>
                       <p className="font-medium text-slate-900">
-                        {formatDate(assignment.dueDate)}
+                        {formatDate(assignment.due_at)}
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-500">
-                  Created: {new Date(assignment.createdAt).toLocaleDateString()}
+                  Created: {new Date(assignment.created_at).toLocaleDateString()}
                 </div>
+
+                <div className="mt-4 flex items-center justify-between">
+                  <button
+                    onClick={() => handleOpenSubmissions(assignment.id)}
+                    className="text-blue-600 text-sm font-medium hover:underline"
+                  >
+                    {activeAssignmentId === assignment.id ? 'Hide Submissions' : 'View Submissions'}
+                  </button>
+                  <span className="text-xs text-slate-400">ID: {assignment.id.slice(0, 6)}</span>
+                </div>
+
+                {activeAssignmentId === assignment.id && (
+                  <div className="mt-4 bg-slate-50 rounded-lg p-4 space-y-4">
+                    {submissions.length === 0 ? (
+                      <p className="text-sm text-slate-500">No submissions yet.</p>
+                    ) : (
+                      submissions.map((submission) => (
+                        <div key={submission.id} className="bg-white rounded-lg p-4 border border-slate-200">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="font-semibold text-slate-900">
+                                {submission.profiles?.full_name || 'Student'}
+                                {submission.profiles?.school_id ? ` • ${submission.profiles.school_id}` : ''}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-1">
+                                Submitted: {new Date(submission.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                            {submission.score !== null && (
+                              <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded">
+                                Score: {submission.score}
+                              </span>
+                            )}
+                          </div>
+
+                          {submission.text_answer && (
+                            <div className="mt-3 text-sm text-slate-700 bg-slate-50 rounded p-3">
+                              {submission.text_answer}
+                            </div>
+                          )}
+
+                          {submission.file_path && (
+                            <div className="mt-3">
+                              <a
+                                href={supabase.storage.from('course-content').getPublicUrl(submission.file_path).data.publicUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 text-blue-600 text-sm font-medium hover:underline"
+                              >
+                                View Attachment {submission.file_name ? `(${submission.file_name})` : ''} <ExternalLink size={14} />
+                              </a>
+                            </div>
+                          )}
+
+                          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <input
+                              type="number"
+                              placeholder="Score"
+                              value={gradingState[submission.id]?.score ?? ''}
+                              onChange={(e) => setGradingState(prev => ({
+                                ...prev,
+                                [submission.id]: {
+                                  score: e.target.value,
+                                  feedback: prev[submission.id]?.feedback || '',
+                                }
+                              }))}
+                              className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Feedback (optional)"
+                              value={gradingState[submission.id]?.feedback ?? ''}
+                              onChange={(e) => setGradingState(prev => ({
+                                ...prev,
+                                [submission.id]: {
+                                  score: prev[submission.id]?.score || '',
+                                  feedback: e.target.value,
+                                }
+                              }))}
+                              className="sm:col-span-2 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+
+                          <div className="mt-3 flex items-center gap-2">
+                            <button
+                              onClick={() => handleGrade(submission.id)}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                            >
+                              Save Grade
+                            </button>
+                            {submission.feedback && (
+                              <span className="text-xs text-slate-500">Current feedback: {submission.feedback}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             ))
           )}

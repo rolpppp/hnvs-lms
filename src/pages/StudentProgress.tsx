@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, TrendingUp, Award, Clock, CheckCircle, Target } from 'lucide-react';
 import { db, type Course, type QuizAttempt } from '../lib/db';
 import { useAuth } from '../features/auth/AuthProvider';
+import { supabase } from '../lib/supabase';
 
 interface CourseProgress {
   course: Course;
@@ -12,6 +13,7 @@ interface CourseProgress {
   percentage: number;
   timeSpent: number; // in minutes
   quizScores: number[];
+  assignmentScores: number[];
 }
 
 export default function StudentProgress() {
@@ -26,6 +28,24 @@ export default function StudentProgress() {
       if (!user?.id) return;
       // Get all courses
       const courses = await db.courses.toArray();
+
+      // Fetch assignment scores for this student (online)
+      const { data: assignmentGrades, error: assignmentError } = await supabase
+        .from('assignment_submissions')
+        .select('score, assignment:assignment_id(course_id)')
+        .eq('student_id', user.id);
+
+      if (assignmentError) {
+        console.error('Error loading assignment grades:', assignmentError);
+      }
+
+      const assignmentScoresByCourse = (assignmentGrades || []).reduce<Record<string, number[]>>((acc, row: any) => {
+        const courseId = row.assignment?.course_id;
+        if (!courseId || row.score === null || row.score === undefined) return acc;
+        if (!acc[courseId]) acc[courseId] = [];
+        acc[courseId].push(Number(row.score));
+        return acc;
+      }, {});
 
       // Calculate progress for each course
       const progressData: CourseProgress[] = [];
@@ -64,6 +84,7 @@ export default function StudentProgress() {
           percentage: lessons.length > 0 ? Math.round((completed / lessons.length) * 100) : 0,
           timeSpent: Math.round(timeSpent / 60), // convert to minutes
           quizScores,
+          assignmentScores: assignmentScoresByCourse[course.id] || [],
         });
 
         totalLessons += lessons.length;
@@ -153,7 +174,7 @@ export default function StudentProgress() {
               <p>No courses enrolled yet</p>
             </div>
           ) : (
-            coursesProgress.map(({ course, completed, total, percentage, timeSpent, quizScores }) => (
+            coursesProgress.map(({ course, completed, total, percentage, timeSpent, quizScores, assignmentScores }) => (
               <div key={course.id} className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
@@ -199,9 +220,65 @@ export default function StudentProgress() {
                       </span>
                     </div>
                   )}
+                  {assignmentScores.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      <Award size={14} />
+                      <span>
+                        Assignments Avg: {Math.round(assignmentScores.reduce((a, b) => a + b, 0) / assignmentScores.length)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))
+          )}
+        </div>
+
+        {/* Grades per Subject */}
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold text-slate-900">Grades</h2>
+          {coursesProgress.length === 0 ? (
+            <div className="bg-white p-8 rounded-xl text-center text-slate-400">
+              <p>No grades available yet</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {coursesProgress.map(({ course, quizScores, assignmentScores }) => (
+                <div key={course.id} className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">{course.title}</h3>
+                      <p className="text-xs text-slate-500">{course.code}</p>
+                    </div>
+                    <Link
+                      to={`/course/${course.id}`}
+                      className="text-blue-600 text-sm font-medium hover:underline"
+                    >
+                      View
+                    </Link>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-xs text-slate-500">Quiz Average</p>
+                      <p className="text-lg font-bold text-slate-900">
+                        {quizScores.length > 0
+                          ? Math.round(quizScores.reduce((a, b) => a + b, 0) / quizScores.length)
+                          : '-'}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-xs text-slate-500">Assignment Average</p>
+                      <p className="text-lg font-bold text-slate-900">
+                        {assignmentScores.length > 0
+                          ? Math.round(assignmentScores.reduce((a, b) => a + b, 0) / assignmentScores.length)
+                          : '-'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

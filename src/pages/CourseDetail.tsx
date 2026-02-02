@@ -1,9 +1,30 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, FileText, PlayCircle, CheckCircle, BookOpen, HelpCircle, Download, RefreshCw, Bell, AlertCircle } from "lucide-react";
+import { ArrowLeft, FileText, PlayCircle, CheckCircle, BookOpen, HelpCircle, Download, RefreshCw, Bell, AlertCircle, Upload } from "lucide-react";
 import { db, type Course, type Lesson, type LessonProgress, type Announcement } from "../lib/db";
 import { useAuth } from '../features/auth/AuthProvider';
 import { useDownloadCourse } from '../hooks/useDownloadCourse';
+import { supabase } from '../lib/supabase';
+
+interface AssignmentRecord {
+  id: string;
+  course_id: string;
+  title: string;
+  description: string | null;
+  due_at: string | null;
+}
+
+interface AssignmentSubmission {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  text_answer: string | null;
+  file_path: string | null;
+  file_name: string | null;
+  score: number | null;
+  feedback: string | null;
+  graded_at: string | null;
+}
 
 export default function CourseDetail() {
   const { user } = useAuth();
@@ -13,6 +34,11 @@ export default function CourseDetail() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [progress, setProgress] = useState<Map<string, LessonProgress>>(new Map());
   const [completionRate, setCompletionRate] = useState(0);
+  const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
+  const [submissions, setSubmissions] = useState<Record<string, AssignmentSubmission>>({});
+  const [submissionText, setSubmissionText] = useState<Record<string, string>>({});
+  const [submissionFile, setSubmissionFile] = useState<Record<string, File | null>>({});
+  const [isSubmitting, setIsSubmitting] = useState<Record<string, boolean>>({});
 
   const { downloadCourse, downloading, progress: downloadProgress, status: downloadStatus } = useDownloadCourse();
 
@@ -52,6 +78,38 @@ export default function CourseDetail() {
       const completed = progressData.filter(p => p.completed).length;
       const rate = lessonsData.length > 0 ? (completed / lessonsData.length) * 100 : 0;
       setCompletionRate(Math.round(rate));
+
+      // Fetch assignments for this course (online)
+      const { data: assignmentData, error: assignmentError } = await supabase
+        .from('assignments')
+        .select('*')
+        .eq('course_id', courseId)
+        .order('created_at', { ascending: false });
+
+      if (assignmentError) {
+        console.error('Error loading assignments:', assignmentError);
+      } else {
+        setAssignments(assignmentData || []);
+
+        if (user?.id && assignmentData && assignmentData.length > 0) {
+          const assignmentIds = assignmentData.map(a => a.id);
+          const { data: submissionData, error: submissionError } = await supabase
+            .from('assignment_submissions')
+            .select('*')
+            .in('assignment_id', assignmentIds)
+            .eq('student_id', user.id);
+
+          if (submissionError) {
+            console.error('Error loading submissions:', submissionError);
+          } else {
+            const byAssignment: Record<string, AssignmentSubmission> = {};
+            (submissionData || []).forEach((s) => {
+              byAssignment[s.assignment_id] = s;
+            });
+            setSubmissions(byAssignment);
+          }
+        }
+      }
     };
 
     loadCourseData();
@@ -64,6 +122,63 @@ export default function CourseDetail() {
       case 'quiz': return HelpCircle;
       case 'text': return BookOpen;
       default: return FileText;
+    }
+  };
+
+  const handleSubmitAssignment = async (assignmentId: string) => {
+    if (!user?.id || !courseId) return;
+
+    const text = submissionText[assignmentId] || '';
+    const file = submissionFile[assignmentId] || null;
+
+    if (!text.trim() && !file) {
+      alert('Please enter an answer or attach a file.');
+      return;
+    }
+
+    setIsSubmitting(prev => ({ ...prev, [assignmentId]: true }));
+
+    try {
+      let filePath: string | null = null;
+      let fileName: string | null = null;
+      let mimeType: string | null = null;
+
+      if (file) {
+        const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        fileName = sanitizedName;
+        mimeType = file.type;
+        filePath = `assignments/${assignmentId}/${user.id}/${sanitizedName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('course-content')
+          .upload(filePath, file, { upsert: true });
+
+        if (uploadError) throw uploadError;
+      }
+
+      const { data, error } = await supabase
+        .from('assignment_submissions')
+        .upsert({
+          assignment_id: assignmentId,
+          student_id: user.id,
+          text_answer: text || null,
+          file_path: filePath,
+          file_name: fileName,
+          mime_type: mimeType,
+        }, { onConflict: 'assignment_id,student_id' })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setSubmissions(prev => ({ ...prev, [assignmentId]: data }));
+      setSubmissionText(prev => ({ ...prev, [assignmentId]: '' }));
+      setSubmissionFile(prev => ({ ...prev, [assignmentId]: null }));
+    } catch (err: any) {
+      console.error('Error submitting assignment:', err);
+      alert(err.message || 'Failed to submit assignment.');
+    } finally {
+      setIsSubmitting(prev => ({ ...prev, [assignmentId]: false }));
     }
   };
 
@@ -181,6 +296,85 @@ export default function CourseDetail() {
             </div>
           </div>
         )}
+
+        {/* ASSIGNMENTS SECTION */}
+        <div className="mb-8">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <h2 className="font-bold text-slate-800 mb-6 text-xl flex items-center gap-2">
+              <CheckCircle className="text-blue-600" size={22} />
+              Assignments
+            </h2>
+
+            {assignments.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-xl">
+                <p>No assignments posted yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {assignments.map((assignment) => {
+                  const submission = submissions[assignment.id];
+                  return (
+                    <div key={assignment.id} className="border border-slate-200 rounded-xl p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <h3 className="font-semibold text-slate-900">{assignment.title}</h3>
+                          <p className="text-sm text-slate-600 mt-1">{assignment.description}</p>
+                        </div>
+                        <div className="text-right text-xs text-slate-500">
+                          <p>Due: {assignment.due_at ? new Date(assignment.due_at).toLocaleString() : 'Not set'}</p>
+                          {submission?.score !== null && submission?.score !== undefined && (
+                            <p className="mt-1 font-bold text-green-700">Score: {submission.score}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {submission?.feedback && (
+                        <div className="mt-3 text-sm text-slate-700 bg-slate-50 rounded p-3">
+                          <span className="font-medium">Feedback:</span> {submission.feedback}
+                        </div>
+                      )}
+
+                      <div className="mt-4 grid grid-cols-1 gap-3">
+                        <textarea
+                          rows={3}
+                          value={submissionText[assignment.id] || ''}
+                          onChange={(e) => setSubmissionText(prev => ({ ...prev, [assignment.id]: e.target.value }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Write your answer here (optional if you attach a file)"
+                        />
+                        <div className="flex items-center justify-between gap-3">
+                          <input
+                            type="file"
+                            onChange={(e) => setSubmissionFile(prev => ({ ...prev, [assignment.id]: e.target.files?.[0] || null }))}
+                            className="text-sm"
+                          />
+                          <button
+                            onClick={() => handleSubmitAssignment(assignment.id)}
+                            disabled={isSubmitting[assignment.id]}
+                            className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            <Upload size={16} />
+                            {isSubmitting[assignment.id] ? 'Submitting...' : 'Submit'}
+                          </button>
+                        </div>
+                        {submission?.file_path && (
+                          <a
+                            href={supabase.storage.from('course-content').getPublicUrl(submission.file_path).data.publicUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            View submitted file
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* MODULE LIST */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">

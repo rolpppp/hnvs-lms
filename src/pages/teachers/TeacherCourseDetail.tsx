@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Users, Settings, Plus, Trash2, Edit, Save, FileText, Video, Eye, EyeOff, Search, Bell, Calendar } from 'lucide-react';
+import { ArrowLeft, BookOpen, Users, Settings, Plus, Trash2, Edit, Save, FileText, Video, Eye, EyeOff, Search, Bell, Calendar, ExternalLink } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../features/auth/AuthProvider';
 import AnnouncementManager from './AnnouncementManager';
@@ -19,6 +19,7 @@ interface Lesson {
     type: 'pdf' | 'video' | 'text' | 'quiz';
     order: number;
     is_visible: boolean;
+    week_number?: number | null;
     quiz_id?: string;
 }
 
@@ -272,6 +273,22 @@ export default function TeacherCourseDetail() {
 
             const nextOrder = (lastLesson?.order || 0) + 1;
 
+            const weekInput = prompt('Enter Week Number:', '1');
+            if (!weekInput) return;
+            const weekNumber = Number(weekInput);
+            if (!Number.isInteger(weekNumber) || weekNumber <= 0) {
+                alert('Please enter a valid week number.');
+                return;
+            }
+
+            const orderInput = prompt('Enter Lesson Number:', String(nextOrder));
+            if (!orderInput) return;
+            const lessonOrder = Number(orderInput);
+            if (!Number.isInteger(lessonOrder) || lessonOrder <= 0) {
+                alert('Please enter a valid lesson number.');
+                return;
+            }
+
             // 3. Create Lesson
             const { error: lessonError } = await supabase
                 .from('lessons')
@@ -279,7 +296,8 @@ export default function TeacherCourseDetail() {
                     course_id: courseId,
                     title: title,
                     type: 'quiz',
-                    order: nextOrder,
+                    order: lessonOrder,
+                    week_number: weekNumber,
                     quiz_id: quiz.id,
                     duration_minutes: 10,
                     is_visible: false // Hidden by default until published
@@ -288,7 +306,7 @@ export default function TeacherCourseDetail() {
             if (lessonError) throw lessonError;
 
             // 4. Redirect
-            navigate(`/teacher/courses / ${courseId} /quiz/${quiz.id} `);
+            navigate(`/teacher/courses/${courseId}/quiz/${quiz.id}`);
 
         } catch (err: any) {
             console.error('Error creating quiz:', err);
@@ -303,6 +321,20 @@ export default function TeacherCourseDetail() {
     if (!course) {
         return <div className="p-12 text-center text-red-500">Course not found.</div>;
     }
+
+    const sortedLessons = [...lessons].sort((a, b) => {
+        const weekA = a.week_number ?? Number.MAX_SAFE_INTEGER;
+        const weekB = b.week_number ?? Number.MAX_SAFE_INTEGER;
+        if (weekA !== weekB) return weekA - weekB;
+        return a.order - b.order;
+    });
+
+    const lessonsByWeek = sortedLessons.reduce<Record<string, Lesson[]>>((acc, lesson) => {
+        const key = lesson.week_number ? `Week ${lesson.week_number}` : 'Unassigned';
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(lesson);
+        return acc;
+    }, {});
 
     return (
         <div className="min-h-screen bg-slate-50 pb-24">
@@ -422,65 +454,98 @@ export default function TeacherCourseDetail() {
                                 <p className="text-slate-400 text-sm mt-1">Start by adding media or creating a quiz</p>
                             </div>
                         ) : (
-                            <div className="grid gap-3">
-                                {lessons.map((lesson) => (
-                                    <div key={lesson.id} className={`bg-white p-5 rounded-xl shadow-sm hover:shadow-md flex items-center justify-between group transition-all ${!lesson.is_visible ? 'opacity-50' : ''}`}>
-                                        <div className="flex items-center gap-4">
-                                            <div className={`p-3 rounded-xl ${lesson.type === 'video' ? 'bg-purple-500 text-white' : lesson.type === 'quiz' ? 'bg-green-500 text-white' : 'bg-orange-500 text-white'}`}>
-                                                {lesson.type === 'video' ? <Video size={20} /> : <FileText size={20} />}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h4 className="font-semibold text-slate-900">{lesson.title}</h4>
-                                                    {!lesson.is_visible && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase font-bold">Hidden</span>}
-                                                </div>
-                                                <p className="text-sm text-slate-500 capitalize">{lesson.type} • Lesson {lesson.order}</p>
-                                            </div>
+                            <div className="space-y-6">
+                                {Object.entries(lessonsByWeek).map(([weekLabel, weekLessons]) => (
+                                    <div key={weekLabel} className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="text-sm font-semibold text-slate-700">{weekLabel}</h4>
+                                            <span className="text-xs text-slate-400">{weekLessons.length} item(s)</span>
                                         </div>
+                                        <div className="grid gap-3">
+                                            {weekLessons.map((lesson) => (
+                                                <div key={lesson.id} className={`bg-white p-5 rounded-xl shadow-sm hover:shadow-md flex items-center justify-between group transition-all ${!lesson.is_visible ? 'opacity-50' : ''}`}>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className={`p-3 rounded-xl ${lesson.type === 'video' ? 'bg-purple-500 text-white' : lesson.type === 'quiz' ? 'bg-green-500 text-white' : lesson.type === 'text' ? 'bg-blue-500 text-white' : 'bg-orange-500 text-white'}`}>
+                                                            {lesson.type === 'video' && <Video size={20} />}
+                                                            {lesson.type === 'pdf' && <FileText size={20} />}
+                                                            {lesson.type === 'text' && <BookOpen size={20} />}
+                                                            {lesson.type === 'quiz' && <BookOpen size={20} />}
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                {lesson.type !== 'quiz' ? (
+                                                                    <Link
+                                                                        to={`/teacher/lesson/${lesson.id}`}
+                                                                        className="font-semibold text-slate-900 hover:text-blue-600 transition-colors"
+                                                                    >
+                                                                        {lesson.title}
+                                                                    </Link>
+                                                                ) : (
+                                                                    <h4 className="font-semibold text-slate-900">{lesson.title}</h4>
+                                                                )}
+                                                                {!lesson.is_visible && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase font-bold">Hidden</span>}
+                                                            </div>
+                                                            <p className="text-sm text-slate-500 capitalize">
+                                                                {lesson.type} • {lesson.week_number ? `Week ${lesson.week_number}` : 'No week'} • Lesson {lesson.order}
+                                                            </p>
+                                                        </div>
+                                                    </div>
 
-                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => handleToggleVisibility(lesson)}
-                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                title={lesson.is_visible ? "Hide from students" : "Show to students"}
-                                            >
-                                                {lesson.is_visible ? <EyeOff size={18} /> : <Eye size={18} />}
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    const newTitle = prompt('Edit Lesson Title:', lesson.title);
-                                                    if (newTitle && newTitle !== lesson.title) {
-                                                        supabase.from('lessons').update({ title: newTitle }).eq('id', lesson.id).then(({ error }) => {
-                                                            if (!error) {
-                                                                setLessons(prev => prev.map(l => l.id === lesson.id ? { ...l, title: newTitle } : l));
-                                                            } else {
-                                                                alert('Failed to update title');
-                                                            }
-                                                        });
-                                                    }
-                                                }}
-                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                title="Edit Title"
-                                            >
-                                                <Edit size={18} />
-                                            </button>
-                                            {/* Quiz Edit Link */}
-                                            {lesson.type === 'quiz' && lesson.quiz_id && (
-                                                <Link
-                                                    to={`/ teacher / courses / ${courseId} /quiz/${lesson.quiz_id} `}
-                                                    className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                                                    title="Edit Quiz Content"
-                                                >
-                                                    <BookOpen size={18} />
-                                                </Link>
-                                            )}
-                                            <button
-                                                onClick={() => handleDeleteLesson(lesson.id)}
-                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                title="Delete Lesson"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
+                                                    <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={() => handleToggleVisibility(lesson)}
+                                                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                            title={lesson.is_visible ? "Hide from students" : "Show to students"}
+                                                        >
+                                                            {lesson.is_visible ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                        </button>
+                                                        {lesson.type !== 'quiz' && (
+                                                            <Link
+                                                                to={`/teacher/lesson/${lesson.id}`}
+                                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                                title="View Material"
+                                                            >
+                                                                <ExternalLink size={18} />
+                                                            </Link>
+                                                        )}
+                                                        <button
+                                                            onClick={() => {
+                                                                const newTitle = prompt('Edit Lesson Title:', lesson.title);
+                                                                if (newTitle && newTitle !== lesson.title) {
+                                                                    supabase.from('lessons').update({ title: newTitle }).eq('id', lesson.id).then(({ error }) => {
+                                                                        if (!error) {
+                                                                            setLessons(prev => prev.map(l => l.id === lesson.id ? { ...l, title: newTitle } : l));
+                                                                        } else {
+                                                                            alert('Failed to update title');
+                                                                        }
+                                                                    });
+                                                                }
+                                                            }}
+                                                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                            title="Edit Title"
+                                                        >
+                                                            <Edit size={18} />
+                                                        </button>
+                                                        {/* Quiz Edit Link */}
+                                                        {lesson.type === 'quiz' && lesson.quiz_id && (
+                                                            <Link
+                                                                to={`/teacher/courses/${courseId}/quiz/${lesson.quiz_id}`}
+                                                                className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                                                title="Edit Quiz Content"
+                                                            >
+                                                                <BookOpen size={18} />
+                                                            </Link>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleDeleteLesson(lesson.id)}
+                                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                            title="Delete Lesson"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 ))}

@@ -19,6 +19,7 @@ import AnnouncementManager from './pages/teachers/AnnouncementManager';
 import NotificationCenter from './pages/NotificationCenter';
 import CourseManager from './pages/teachers/CourseManager';
 import TeacherCourseDetail from './pages/teachers/TeacherCourseDetail';
+import TeacherLessonViewer from './pages/teachers/TeacherLessonViewer';
 import QuizCreator from './pages/teachers/QuizCreator';
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -215,6 +216,11 @@ function App() {
                   <Route path="/teacher/courses/:courseId/quiz/:quizId" element={
                     <RequireRole role="teacher">
                       <QuizCreator />
+                    </RequireRole>
+                  } />
+                  <Route path="/teacher/lesson/:lessonId" element={
+                    <RequireRole role="teacher">
+                      <TeacherLessonViewer />
                     </RequireRole>
                   } />
 

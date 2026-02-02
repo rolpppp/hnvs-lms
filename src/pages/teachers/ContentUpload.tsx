@@ -29,6 +29,9 @@ export default function ContentUpload() {
   const [fileType, setFileType] = useState<FileType>('pdf');
   const [file, setFile] = useState<File | null>(null);
   const [textContent, setTextContent] = useState('');
+  const [weekNumber, setWeekNumber] = useState<number>(1);
+  const [lessonOrder, setLessonOrder] = useState<number | ''>('');
+  const [autoOrder, setAutoOrder] = useState(true);
 
   // Upload State
   const [isUploading, setIsUploading] = useState(false);
@@ -47,6 +50,17 @@ export default function ContentUpload() {
       setCourseId(initialCourseId);
     }
   }, [initialCourseId]);
+
+  useEffect(() => {
+    if (!courseId) return;
+    const setSuggestedOrder = async () => {
+      const nextOrder = await getNextOrder(courseId);
+      if (autoOrder || lessonOrder === '') {
+        setLessonOrder(nextOrder);
+      }
+    };
+    setSuggestedOrder();
+  }, [courseId, autoOrder, lessonOrder]);
 
   const fetchCourses = async () => {
     if (!user) return;
@@ -104,15 +118,24 @@ export default function ContentUpload() {
       return;
     }
 
+    const normalizedWeek = Number(weekNumber);
+    if (!Number.isInteger(normalizedWeek) || normalizedWeek <= 0) {
+      alert('Please enter a valid week number (1 or higher).');
+      return;
+    }
+
+    const normalizedOrder = Number(lessonOrder);
+    if (!Number.isInteger(normalizedOrder) || normalizedOrder <= 0) {
+      alert('Please enter a valid lesson number (1 or higher).');
+      return;
+    }
+
     setIsUploading(true);
     setUploadStatus('idle');
     setStatusMessage('Preparing upload...');
 
     try {
-      // 1. Calculate Order
-      const nextOrder = await getNextOrder(courseId);
-
-      // 2. Create Lesson Record
+      // 1. Create Lesson Record
       setStatusMessage('Creating lesson...');
       const { data: lessonData, error: lessonError } = await supabase
         .from('lessons')
@@ -120,7 +143,8 @@ export default function ContentUpload() {
           course_id: courseId,
           title,
           type: fileType,
-          order: nextOrder,
+          order: normalizedOrder,
+          week_number: normalizedWeek,
           content_html: fileType === 'text' ? textContent : null,
           duration_minutes: 15, // Default duration
         })
@@ -179,6 +203,7 @@ export default function ContentUpload() {
         setTitle('');
         setFile(null);
         setTextContent('');
+        setAutoOrder(true);
         setUploadStatus('idle');
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -187,8 +212,12 @@ export default function ContentUpload() {
 
     } catch (error: any) {
       console.error('Upload failed:', error);
+      if (error?.code === '23505') {
+        setStatusMessage('Lesson number already exists. Please choose a different lesson number.');
+      } else {
+        setStatusMessage(error.message || 'Upload failed');
+      }
       setUploadStatus('error');
-      setStatusMessage(error.message || 'Upload failed');
     } finally {
       setIsUploading(false);
     }
@@ -255,6 +284,40 @@ export default function ContentUpload() {
         {/* Upload Form */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Week Number
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={weekNumber}
+                  onChange={(e) => setWeekNumber(Number(e.target.value))}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., 1"
+                />
+                <p className="text-xs text-slate-500 mt-1">Group materials by week</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Lesson Number
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={lessonOrder}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setLessonOrder(value === '' ? '' : Number(value));
+                    setAutoOrder(value === '');
+                  }}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., 3"
+                />
+                <p className="text-xs text-slate-500 mt-1">You can override the default order</p>
+              </div>
+            </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Content Title

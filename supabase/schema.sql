@@ -113,6 +113,7 @@ create table if not exists public.lessons (
   description text,
   type text not null check (type in ('pdf','video','text','quiz')),
   "order" int not null,
+  week_number int,
   duration_minutes int not null default 0,
   content_html text,
   created_at timestamptz not null default now(),
@@ -126,6 +127,7 @@ alter table public.lessons enable row level security;
 create index if not exists idx_lessons_course on public.lessons(course_id);
 create index if not exists idx_lessons_type on public.lessons(type);
 create index if not exists idx_lessons_course_order on public.lessons(course_id, "order");
+create index if not exists idx_lessons_course_week on public.lessons(course_id, week_number);
 
 create table if not exists public.lesson_assets (
   id uuid primary key default gen_random_uuid(),
@@ -238,6 +240,47 @@ create table if not exists public.quiz_submissions (
 );
 
 alter table public.quiz_submissions enable row level security;
+
+-- =========================
+-- Assignments + submissions
+-- =========================
+create table if not exists public.assignments (
+  id uuid primary key default gen_random_uuid(),
+  course_id uuid not null references public.courses(id) on delete cascade,
+  title text not null,
+  description text,
+  due_at timestamptz,
+  created_by uuid not null references public.profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.assignments enable row level security;
+
+create index if not exists idx_assignments_course on public.assignments(course_id);
+create index if not exists idx_assignments_created_by on public.assignments(created_by);
+
+create table if not exists public.assignment_submissions (
+  id uuid primary key default gen_random_uuid(),
+  assignment_id uuid not null references public.assignments(id) on delete cascade,
+  student_id uuid not null references public.profiles(id) on delete cascade,
+  text_answer text,
+  file_path text,
+  file_name text,
+  mime_type text,
+  score numeric,
+  feedback text,
+  graded_by uuid references public.profiles(id) on delete set null,
+  graded_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (assignment_id, student_id)
+);
+
+alter table public.assignment_submissions enable row level security;
+
+create index if not exists idx_assignment_submissions_assignment on public.assignment_submissions(assignment_id);
+create index if not exists idx_assignment_submissions_student on public.assignment_submissions(student_id);
 
 -- Create indexes for performance
 create index if not exists idx_quiz_submissions_quiz on public.quiz_submissions(quiz_id);
