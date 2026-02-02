@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link} from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { ArrowLeft, Plus, BookOpen, Edit, Trash2, Loader } from 'lucide-react';
@@ -24,7 +24,6 @@ export default function CourseManager() {
     const [description, setDescription] = useState('');
     const [optError, setOptError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const navigate = useNavigate();
 
     useEffect(() => {
         fetchCourses();
