@@ -31,6 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     let timeoutId: number;
     let authSubscription: any;
+    let sessionCheckInterval: number;
+    let visibilityCheckInterval: number;
 
     const loadProfile = async (userId: string) => {
       try {
@@ -52,6 +54,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // Proactive session refresh - checks and refreshes if needed
+    const refreshSessionIfNeeded = async () => {
+      if (!mounted) return;
+      
+      try {
+        const { data: { session: currentSession }, error: sessionError } = await authService.supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.warn('Session check error:', sessionError);
+          return;
+        }
+
+        if (!currentSession) {
+          console.log('No session found during refresh check');
+          return;
+        }
+
+        // Check if token is close to expiry (within 5 minutes)
+        const expiresAt = currentSession.expires_at;
+        if (expiresAt) {
+          const now = Math.floor(Date.now() / 1000);
+          const timeUntilExpiry = expiresAt - now;
+          
+          // Refresh if less than 5 minutes remaining
+          if (timeUntilExpiry < 300) {
+            console.log('🔄 Token expiring soon, refreshing session...');
+            const { data, error: refreshError } = await authService.supabase.auth.refreshSession();
+            
+            if (refreshError) {
+              console.error('Failed to refresh session:', refreshError);
+              // Don't set error state here, let auth state handler deal with it
+            } else if (data.session) {
+              console.log('✓ Session refreshed successfully');
+              setSession(data.session);
+              setUser(data.session.user);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error in session refresh:', err);
+        // Don't throw or set error - this is a background operation
+      }
+    };
+
+    // Handle visibility change - refresh session when tab becomes visible
+    const handleVisibilityChange = async () => {
+      if (!mounted) return;
+      
+      if (document.visibilityState === 'visible') {
+        console.log('Tab visible, checking session validity...');
+        await refreshSessionIfNeeded();
+      }
+    };
+
     const initAuth = async () => {
       try {
         // Set up auth state listener FIRST
@@ -70,9 +126,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             if (session?.user) {
               await loadProfile(session.user.id);
+              
+              // Start session monitoring when user signs in
+              if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                console.log('✓ Starting session monitoring');
+                
+                // Clear any existing intervals
+                if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+                
+                // Check session every 4 minutes
+                sessionCheckInterval = window.setInterval(refreshSessionIfNeeded, 4 * 60 * 1000);
+              }
             } else {
               setProfile(null);
               setError(null);
+              
+              // Clear monitoring when user signs out
+              if (sessionCheckInterval) {
+                clearInterval(sessionCheckInterval);
+                sessionCheckInterval = 0;
+              }
             }
           }
         );
@@ -120,25 +193,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // Safety timeout - shorter timeout
+    // Safety timeout - extended for better reliability
     timeoutId = window.setTimeout(() => {
       if (mounted && loading) {
         console.error('Auth initialization timed out');
         setError('Connection timed out. Please refresh the page.');
         setLoading(false);
       }
-    }, 10000); // Reduced to 10s
+    }, 15000); // Extended to 15s for better reliability
 
     // Start initialization
     initAuth();
+
+    // Set up visibility change listener
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Initial check when component mounts (if already visible)
+    if (document.visibilityState === 'visible') {
+      visibilityCheckInterval = window.setTimeout(refreshSessionIfNeeded, 2000);
+    }
 
     // Cleanup
     return () => {
       mounted = false;
       if (timeoutId) clearTimeout(timeoutId);
+      if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+      if (visibilityCheckInterval) clearTimeout(visibilityCheckInterval);
       if (authSubscription) {
         authSubscription.unsubscribe();
       }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 

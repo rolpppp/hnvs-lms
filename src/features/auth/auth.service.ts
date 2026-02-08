@@ -14,6 +14,43 @@ const withTimeout = async <T>(promise: Promise<T>, ms: number, message: string):
   }
 };
 
+// Retry with exponential backoff for network errors
+const withRetry = async <T>(
+  fn: () => Promise<T>, 
+  maxRetries: number = 3, 
+  baseDelay: number = 1000
+): Promise<T> => {
+  let lastError: Error | null = null;
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Don't retry on auth errors or validation errors
+      if (error.message?.includes('Invalid login') || 
+          error.message?.includes('Email') ||
+          error.message?.includes('Password') ||
+          error.status === 400 ||
+          error.status === 401 ||
+          error.status === 422) {
+        throw error;
+      }
+      
+      // Retry on network errors or timeouts
+      const isLastRetry = i === maxRetries - 1;
+      if (!isLastRetry) {
+        const delay = baseDelay * Math.pow(2, i);
+        console.log(`Retry ${i + 1}/${maxRetries} after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError || new Error('Operation failed after retries');
+};
+
 export interface UserProfile {
   id: string;
   role: 'student' | 'teacher' | 'admin';
@@ -23,18 +60,23 @@ export interface UserProfile {
 }
 
 export const authService = {
+  // Expose supabase client for direct access (e.g., session refresh)
+  supabase,
   /**
    * Sign in with email and password
    */
   async signIn(email: string, password: string) {
     try {
-      const signInResponse = await withTimeout(
-        supabase.auth.signInWithPassword({
-          email,
-          password,
-        }),
-        10000,
-        'Sign in timed out. Please try again.'
+      const signInResponse = await withRetry(() => 
+        withTimeout(
+          supabase.auth.signInWithPassword({
+            email,
+            password,
+          }),
+          15000, // Increased timeout
+          'Sign in timed out. Please check your connection and try again.'
+        ),
+        2 // Retry once on network errors
       );
       const { data, error } = signInResponse;
 
@@ -179,18 +221,15 @@ export const authService = {
     if (error) throw error;
   },
 
-  /**
-   * Get current session
-   */
-  /**
-   * Get current session
-   */
   async getSession() {
     try {
-      const sessionResponse = await withTimeout(
-        supabase.auth.getSession(),
-        10000,
-        'Session check timed out. Please refresh the page.'
+      const sessionResponse = await withRetry(() =>
+        withTimeout(
+          supabase.auth.getSession(),
+          15000, // Increased timeout
+          'Session check timed out. Please check your connection.'
+        ),
+        2 // Retry once on network errors
       );
       const { data, error } = sessionResponse;
       if (error) {
@@ -207,6 +246,36 @@ export const authService = {
       return data.session;
     } catch (err) {
       console.error('Session check failed:', err);
+      // Don't throw on session check failures - return null instead
+      return null;
+    }
+  },
+
+  /**
+   * Refresh the current session
+   */
+  async refreshSession() {
+    try {
+      console.log('🔄 Manually refreshing session...');
+      const { data, error } = await withTimeout(
+        supabase.auth.refreshSession(),
+        15000,
+        'Session refresh timed out.'
+      );
+      
+      if (error) {
+        console.error('Session refresh error:', error);
+        throw error;
+      }
+      
+      if (data.session) {
+        console.log('✓ Session refreshed successfully');
+        return data.session;
+      }
+      
+      return null;
+    } catch (err) {
+      console.error('Session refresh failed:', err);
       throw err;
     }
   },
@@ -216,14 +285,17 @@ export const authService = {
    */
   async getProfile(userId: string): Promise<UserProfile | null> {
     try {
-      const profileResponse = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single() as unknown as Promise<any>,
-        10000,
-        'Profile request timed out. Please try again.'
+      const profileResponse = await withRetry(() =>
+        withTimeout(
+          supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single() as unknown as Promise<any>,
+          15000, // Increased timeout
+          'Profile request timed out. Please check your connection.'
+        ),
+        2 // Retry once on network errors
       );
       const { data, error } = profileResponse as { data: UserProfile | null; error: any };
 

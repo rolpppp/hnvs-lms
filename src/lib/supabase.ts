@@ -23,6 +23,8 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     detectSessionInUrl: false,
     storage: window.localStorage,
     storageKey: 'hnvs-lms-auth',
+    // Refresh session 60 seconds before expiration (default is 3600s token lifetime)
+    flowType: 'pkce',
   },
   global: {
     headers: {
