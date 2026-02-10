@@ -58,9 +58,10 @@ export default function TeacherLessonViewer() {
             setAssetUrl(publicData.publicUrl);
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error loading lesson:', err);
-        setError(err.message || 'Failed to load lesson');
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load lesson';
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }

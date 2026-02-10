@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Save, Trash2, CheckCircle, Circle, GripVertical } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Trash2, CheckCircle, Circle, GripVertical, Check, AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface Option {
@@ -32,15 +32,15 @@ export default function QuizCreator() {
     const [quiz, setQuiz] = useState<Quiz | null>(null);
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [saveMessage, setSaveMessage] = useState<string | null>(null);
-    const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
+    const [toastMessage, setToastMessage] = useState<{type: 'success' | 'error', message: string} | null>(null);
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const autoSaveTimerRef = useRef<number | null>(null);
+    const lastSavedDataRef = useRef<string>('');
+    const deletedQuestionIdsRef = useRef<Set<string>>(new Set());
+    const deletedOptionIdsRef = useRef<Set<string>>(new Set());
 
-    useEffect(() => {
-        if (quizId) fetchQuizData();
-    }, [quizId]);
-
-    const fetchQuizData = async () => {
+    const fetchQuizData = useCallback(async () => {
         try {
             setLoading(true);
 
@@ -67,7 +67,7 @@ export default function QuizCreator() {
             // (A bit inefficient to fetch all options for quiz, but okay for small scale)
             // We can fetch options where question_id in (...)
             const qIds = qData.map(q => q.id);
-            let optionsMap: Record<string, Option[]> = {};
+            const optionsMap: Record<string, Option[]> = {};
 
             if (qIds.length > 0) {
                 const { data: oData, error: oError } = await supabase
@@ -78,7 +78,7 @@ export default function QuizCreator() {
                 if (oError) throw oError;
 
                 // Group by question_id
-                oData.forEach((opt: any) => {
+                oData.forEach((opt: {question_id: string; id: string; label: string; is_correct: boolean}) => {
                     if (!optionsMap[opt.question_id]) optionsMap[opt.question_id] = [];
                     optionsMap[opt.question_id].push(opt);
                 });
@@ -91,22 +91,66 @@ export default function QuizCreator() {
             }));
 
             setQuestions(fullQuestions);
+            
+            // Store initial state for change tracking
+            lastSavedDataRef.current = JSON.stringify({ quiz: quizData, questions: fullQuestions });
+            
+            // Reset deletion trackers
+            deletedQuestionIdsRef.current.clear();
+            deletedOptionIdsRef.current.clear();
 
         } catch (err) {
             console.error('Error loading quiz:', err);
-            alert('Failed to load quiz data');
+            setToastMessage({ type: 'error', message: 'Failed to load quiz data' });
             navigate(-1);
         } finally {
             setLoading(false);
         }
-    };
+    }, [quizId, navigate]);
 
-    const handleSave = async (e?: React.FormEvent) => {
+    // Helper function to process options with proper UPDATE/INSERT logic
+    const processOptions = useCallback(async (questionId: string, options: Option[]) => {
+        for (let i = 0; i < options.length; i++) {
+            const opt = options[i];
+            
+            if (opt.id.startsWith('new-opt-')) {
+                // Insert new option
+                const { data: newOpt, error: insertErr } = await supabase
+                    .from('quiz_options')
+                    .insert({
+                        question_id: questionId,
+                        label: opt.label,
+                        is_correct: opt.is_correct
+                    })
+                    .select()
+                    .single();
+                    
+                if (insertErr) throw insertErr;
+                
+                // Update option ID for future saves
+                opt.id = newOpt.id;
+            } else {
+                // Update existing option (PUT)
+                const { error: updateErr } = await supabase
+                    .from('quiz_options')
+                    .update({
+                        label: opt.label,
+                        is_correct: opt.is_correct
+                    })
+                    .eq('id', opt.id);
+                    
+                if (updateErr) throw updateErr;
+            }
+        }
+    }, []);
+
+    const handleSave = useCallback(async (e?: React.FormEvent) => {
         e?.preventDefault();
         if (!quiz) return;
-        setSaveMessage(null);
-        setSaveError(null);
-        setSaving(true);
+        if (saveStatus === 'saving') return; // Prevent concurrent saves
+        
+        setSaveStatus('saving');
+        setHasUnsavedChanges(false);
         try {
             // 1. Update Quiz
             const { error: quizErr } = await supabase
@@ -124,11 +168,38 @@ export default function QuizCreator() {
             // For now, let's implement a simpler "Delete all and Insert" or "Upsert"
             // Upsert is safer.
 
-            for (let i = 0; i < questions.length; i++) {
-                const q = questions[i];
+            // Step 2a: PROACTIVE FIX for Unique Constraint Violations "quiz_questions_quiz_id_order_key"
+            // We temporarily flip all existing orders to negative values to clear the positive integer space (0, 1, 2...)
+            // This prevents "duplicate key value" errors when swapping questions or inserting in the middle.
+            try {
+                const { error: rpcError } = await supabase.rpc('prepare_quiz_reorder', { p_quiz_id: quiz.id });
+                
+                if (rpcError) {
+                    console.warn('RPC prepare_quiz_reorder failed/missing, falling back to client-side shuffle:', rpcError);
+                    // Fallback: Manually updating existing questions to distinct negative orders
+                    // Using -10000 - index ensures they are negative and unique
+                    const existingQuestions = questions.filter(q => !q.id.startsWith('new-'));
+                    for (let j = 0; j < existingQuestions.length; j++) {
+                        const tempOrder = -10000 - j; 
+                        await supabase
+                            .from('quiz_questions')
+                            .update({ order: tempOrder })
+                            .eq('id', existingQuestions[j].id);
+                    }
+                }
+            } catch (prepError) {
+                console.error('Error preparing quiz order:', prepError);
+                // Continue anyway, worst case we hit the original error
+            }
+
+            // Step 2b: Process all questions (now that space is clear)
+            const updatedQuestions = [...questions]; // Create a copy to avoid mutation
+            
+            for (let i = 0; i < updatedQuestions.length; i++) {
+                const q = updatedQuestions[i];
                 let qId = q.id;
 
-                // Handle New Question
+                // Handle New Question (INSERT)
                 if (q.id.startsWith('new-')) {
                     const { data: newQ, error: newQErr } = await supabase
                         .from('quiz_questions')
@@ -141,46 +212,60 @@ export default function QuizCreator() {
                         .single();
                     if (newQErr) throw newQErr;
                     qId = newQ.id;
+                    
+                    // Update the question ID in the copy
+                    updatedQuestions[i] = { ...updatedQuestions[i], id: qId };
                 } else {
-                    // Update existing
-                    await supabase
+                    // Update existing question (PUT)
+                    const { error: updateErr } = await supabase
                         .from('quiz_questions')
                         .update({ prompt: q.prompt, order: i })
                         .eq('id', q.id);
+                    if (updateErr) throw updateErr;
                 }
 
-                // Handle Options
-                // We'll delete existing options for this question and re-insert to handle deletions easily
-                if (!q.id.startsWith('new-')) {
-                    await supabase.from('quiz_options').delete().eq('question_id', qId);
-                }
-
-                const optionsToInsert = q.options.map(opt => ({
-                    question_id: qId,
-                    label: opt.label,
-                    is_correct: opt.is_correct
-                }));
-
-                if (optionsToInsert.length > 0) {
-                    const { error: optErr } = await supabase.from('quiz_options').insert(optionsToInsert);
-                    if (optErr) throw optErr;
-                }
+                // Handle Options using proper UPDATE/INSERT pattern
+                await processOptions(qId, q.options);
+            }
+            
+            // Update state with new IDs only after successful save
+            setQuestions(updatedQuestions);
+            
+            // Delete questions that were removed from the UI
+            if (deletedQuestionIdsRef.current.size > 0) {
+                const idsToDelete = Array.from(deletedQuestionIdsRef.current);
+                const { error: deleteErr } = await supabase
+                    .from('quiz_questions')
+                    .delete()
+                    .in('id', idsToDelete);
+                if (deleteErr) console.error('Error deleting questions:', deleteErr);
+                deletedQuestionIdsRef.current.clear();
+            }
+            
+            // Delete options that were removed
+            if (deletedOptionIdsRef.current.size > 0) {
+                const idsToDelete = Array.from(deletedOptionIdsRef.current);
+                const { error: deleteErr } = await supabase
+                    .from('quiz_options')
+                    .delete()
+                    .in('id', idsToDelete);
+                if (deleteErr) console.error('Error deleting options:', deleteErr);
+                deletedOptionIdsRef.current.clear();
             }
 
-            // Handle Deleted Questions? 
-            // We need to track deletions or just fetch fresh after save.
-            // For MVP, tracking deletions is better, but fetching fresh is robust.
+            // Update last saved state without refetching (optimistic)
+            lastSavedDataRef.current = JSON.stringify({ quiz, questions });
+            setSaveStatus('saved');
+            setToastMessage({ type: 'success', message: 'All changes saved' });
 
-            await fetchQuizData(); // Refresh IDs
-            setSaveMessage('Quiz saved successfully.');
-
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Save failed:', err);
-            setSaveError(err.message || 'Save failed.');
-        } finally {
-            setSaving(false);
+            setSaveStatus('error');
+            const errorMessage = err instanceof Error ? err.message : 'Save failed';
+            setToastMessage({ type: 'error', message: errorMessage });
+            setHasUnsavedChanges(true);
         }
-    };
+    }, [quiz, questions, saveStatus, processOptions]);
 
     const handleTogglePublish = async () => {
         if (!quiz) return;
@@ -207,13 +292,70 @@ export default function QuizCreator() {
 
             if (lessonError) console.warn('Could not update lesson visibility:', lessonError);
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Error updating publish status:', err);
-            alert('Failed to update publish status');
+            const errorMessage = err instanceof Error ? err.message : 'Failed to update publish status';
+            setToastMessage({ type: 'error', message: errorMessage });
             // Revert
             setQuiz({ ...quiz, published: !newStatus });
         }
     };
+
+    // Effects
+    useEffect(() => {
+        if (quizId) fetchQuizData();
+    }, [quizId, fetchQuizData]);
+
+    // Keyboard shortcut for save (Cmd+S / Ctrl+S)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                e.preventDefault();
+                if (hasUnsavedChanges) {
+                    handleSave();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [hasUnsavedChanges, handleSave]);
+
+    // Auto-hide toast after 3 seconds
+    useEffect(() => {
+        if (toastMessage) {
+            const timer = setTimeout(() => setToastMessage(null), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [toastMessage]);
+
+    // Track changes for auto-save
+    useEffect(() => {
+        if (!quiz || loading) return;
+
+        const currentData = JSON.stringify({ quiz, questions });
+        
+        // Check if data has changed from last saved state
+        if (lastSavedDataRef.current && currentData !== lastSavedDataRef.current) {
+            setHasUnsavedChanges(true);
+            setSaveStatus('unsaved');
+            
+            // Clear existing timer
+            if (autoSaveTimerRef.current) {
+                clearTimeout(autoSaveTimerRef.current);
+            }
+            
+            // Set new auto-save timer (2 seconds after last change)
+            autoSaveTimerRef.current = window.setTimeout(() => {
+                handleSave();
+            }, 2000);
+        }
+
+        return () => {
+            if (autoSaveTimerRef.current) {
+                clearTimeout(autoSaveTimerRef.current);
+            }
+        };
+    }, [quiz, questions, loading, handleSave]);
 
     const addQuestion = () => {
         const newQ: Question = {
@@ -231,9 +373,22 @@ export default function QuizCreator() {
     const deleteQuestion = async (qId: string) => {
         if (!confirm('Delete this question?')) return;
 
+        // Track deletion if it's an existing question
         if (!qId.startsWith('new-')) {
-            await supabase.from('quiz_questions').delete().eq('id', qId);
+            deletedQuestionIdsRef.current.add(qId);
+            
+            // Also track all its options for deletion
+            const question = questions.find(q => q.id === qId);
+            if (question) {
+                question.options.forEach(opt => {
+                    if (!opt.id.startsWith('new-')) {
+                        deletedOptionIdsRef.current.add(opt.id);
+                    }
+                });
+            }
         }
+        
+        // Remove from UI
         setQuestions(questions.filter(q => q.id !== qId));
     };
 
@@ -248,7 +403,34 @@ export default function QuizCreator() {
                         <Link to={`/teacher/courses/${courseId}`} className="text-slate-500 hover:text-blue-600 flex items-center gap-2 text-sm">
                             <ArrowLeft size={16} /> Back to Course
                         </Link>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
+                            {/* Save Status Indicator */}
+                            <div className="flex items-center gap-2 text-xs">
+                                {saveStatus === 'saving' && (
+                                    <span className="flex items-center gap-1.5 text-blue-600">
+                                        <Loader2 size={14} className="animate-spin" />
+                                        <span className="font-medium">Saving...</span>
+                                    </span>
+                                )}
+                                {saveStatus === 'saved' && (
+                                    <span className="flex items-center gap-1.5 text-green-600">
+                                        <Check size={14} />
+                                        <span className="font-medium">All changes saved</span>
+                                    </span>
+                                )}
+                                {saveStatus === 'unsaved' && (
+                                    <span className="flex items-center gap-1.5 text-amber-600">
+                                        <Circle size={8} className="fill-current" />
+                                        <span className="font-medium">Unsaved changes</span>
+                                    </span>
+                                )}
+                                {saveStatus === 'error' && (
+                                    <span className="flex items-center gap-1.5 text-red-600">
+                                        <AlertCircle size={14} />
+                                        <span className="font-medium">Save failed</span>
+                                    </span>
+                                )}
+                            </div>
                             <span className={`text-xs px-2 py-1 rounded font-bold uppercase ${quiz.published ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                                 {quiz.published ? 'Published' : 'Draft'}
                             </span>
@@ -283,31 +465,52 @@ export default function QuizCreator() {
                             >
                                 {quiz.published ? 'Unpublish' : 'Publish'}
                             </button>
-                            <button
-                                type="submit"
-                                disabled={saving}
-                                className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
-                            >
-                                {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-                                Save Changes
-                            </button>
+                            {hasUnsavedChanges && (
+                                <button
+                                    onClick={handleSave}
+                                    disabled={saveStatus === 'saving'}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 transition-all"
+                                    title="Save now (Cmd+S)"
+                                >
+                                    {saveStatus === 'saving' ? (
+                                        <Loader2 className="animate-spin" size={18} />
+                                    ) : (
+                                        <Save size={18} />
+                                    )}
+                                    Save Now
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
             </div>
 
+            {/* Toast Notification */}
+            {toastMessage && (
+                <div className="fixed top-20 right-6 z-50 animate-slide-in-right">
+                    <div className={`rounded-lg shadow-xl px-5 py-3.5 flex items-center gap-3 border-l-4 ${
+                        toastMessage.type === 'success' 
+                            ? 'bg-white border-green-500 text-green-800' 
+                            : 'bg-white border-red-500 text-red-800'
+                    }`}>
+                        {toastMessage.type === 'success' ? (
+                            <Check size={20} className="text-green-600 flex-shrink-0" />
+                        ) : (
+                            <AlertCircle size={20} className="text-red-600 flex-shrink-0" />
+                        )}
+                        <span className="font-medium text-sm">{toastMessage.message}</span>
+                        <button
+                            onClick={() => setToastMessage(null)}
+                            className="ml-2 text-slate-400 hover:text-slate-600"
+                        >
+                            ×
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Content */}
-            <form onSubmit={handleSave} className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-                {saveMessage && (
-                    <div className="bg-green-50 text-green-700 text-sm rounded-lg px-4 py-3">
-                        {saveMessage}
-                    </div>
-                )}
-                {saveError && (
-                    <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3">
-                        {saveError}
-                    </div>
-                )}
+            <form onSubmit={(e) => { e.preventDefault(); handleSave(e); }} className="max-w-3xl mx-auto px-4 py-8 space-y-6">
 
                 {questions.map((q, qIndex) => (
                     <div key={q.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -361,6 +564,13 @@ export default function QuizCreator() {
                                     <button
                                         onClick={() => {
                                             const newQ = [...questions];
+                                            const removedOption = newQ[qIndex].options[oIndex];
+                                            
+                                            // Track deletion if it's an existing option
+                                            if (!removedOption.id.startsWith('new-')) {
+                                                deletedOptionIdsRef.current.add(removedOption.id);
+                                            }
+                                            
                                             newQ[qIndex].options = newQ[qIndex].options.filter((_, idx) => idx !== oIndex);
                                             setQuestions(newQ);
                                         }}
@@ -394,26 +604,4 @@ export default function QuizCreator() {
             </form>
         </div>
     );
-}
-
-function RefreshCw({ size, className }: { size: number, className?: string }) {
-    return (
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width={size}
-            height={size}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={className}
-        >
-            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-            <path d="M21 3v5h-5" />
-            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-            <path d="M8 16H3v5" />
-        </svg>
-    )
 }

@@ -42,6 +42,7 @@ export default function ContentUpload() {
 
   useEffect(() => {
     fetchCourses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // Update logic when URL changes
@@ -72,7 +73,6 @@ export default function ContentUpload() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCourses(data || []);
       setCourses(data || []);
 
       // Default to first course if no selection and no URL param
@@ -135,6 +135,19 @@ export default function ContentUpload() {
     setStatusMessage('Preparing upload...');
 
     try {
+      // Proactive Check: Ensure order is unique if manually entered or even auto-calculated
+      // (Race conditions could still happen, but this catches most UI errors)
+      const { data: existingLesson } = await supabase
+        .from('lessons')
+        .select('id')
+        .eq('course_id', courseId)
+        .eq('order', normalizedOrder)
+        .maybeSingle();
+
+      if (existingLesson) {
+        throw new Error(`Lesson number ${normalizedOrder} already exists in this course. Please choose a different number.`);
+      }
+
       // 1. Create Lesson Record
       setStatusMessage('Creating lesson...');
       const { data: lessonData, error: lessonError } = await supabase
@@ -210,12 +223,14 @@ export default function ContentUpload() {
         }
       }, 2000);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Upload failed:', error);
-      if (error?.code === '23505') {
+      const dbError = error as { code?: string; message?: string };
+      if (dbError?.code === '23505') {
         setStatusMessage('Lesson number already exists. Please choose a different lesson number.');
       } else {
-        setStatusMessage(error.message || 'Upload failed');
+        const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+        setStatusMessage(errorMessage);
       }
       setUploadStatus('error');
     } finally {

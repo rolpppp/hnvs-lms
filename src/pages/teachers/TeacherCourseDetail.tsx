@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Users, Settings, Plus, Trash2, Edit, Save, FileText, Video, Eye, EyeOff, Search, Bell, Calendar, ExternalLink } from 'lucide-react';
+import { ArrowLeft, BookOpen, Users, Settings, Plus, Trash2, Edit, Save, FileText, Video, Eye, EyeOff, Search, Bell, Calendar, ExternalLink, X, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../features/auth/AuthProvider';
 import AnnouncementManager from './AnnouncementManager';
@@ -48,6 +48,19 @@ export default function TeacherCourseDetail() {
     const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState('');
     const [editDesc, setEditDesc] = useState('');
+
+    // Quiz Creation Form State
+    const [showQuizForm, setShowQuizForm] = useState(false);
+    const [quizFormData, setQuizFormData] = useState({
+        title: '',
+        weekNumber: 1,
+        lessonOrder: 1
+    });
+    const [quizFormErrors, setQuizFormErrors] = useState<{title?: string; weekNumber?: string; lessonOrder?: string}>({});
+
+    // Lesson Title Editing State
+    const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
+    const [editingLessonTitle, setEditingLessonTitle] = useState('');
 
     const fetchCourseData = useCallback(async () => {
         try {
@@ -112,7 +125,12 @@ export default function TeacherCourseDetail() {
             const quizIds = quizzes?.map(q => q.id) || [];
 
             // 4. Fetch Submissions
-            let submissions: any[] = [];
+            interface Submission {
+                student_id: string;
+                score: number;
+                quiz_id: string;
+            }
+            let submissions: Submission[] = [];
             if (quizIds.length > 0) {
                 const { data: subs } = await supabase
                     .from('quiz_submissions')
@@ -127,7 +145,7 @@ export default function TeacherCourseDetail() {
                 const studentSubs = submissions.filter(s => s.student_id === enroll.student_id);
 
                 // Calculate Average
-                const totalScore = studentSubs.reduce((acc: number, curr: any) => acc + curr.score, 0);
+                const totalScore = studentSubs.reduce((acc: number, curr: Submission) => acc + curr.score, 0);
                 const avg = studentSubs.length > 0 ? (totalScore / studentSubs.length).toFixed(1) : '0.0';
 
                 return {
@@ -197,9 +215,10 @@ export default function TeacherCourseDetail() {
 
             alert('Course deleted successfully');
             navigate('/teacher/courses');
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Error deleting course:', err);
-            alert('Failed to delete course: ' + (err.message || 'Unknown error'));
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            alert('Failed to delete course: ' + errorMessage);
         }
     };
 
@@ -242,10 +261,68 @@ export default function TeacherCourseDetail() {
         }
     };
 
-    const handleCreateQuiz = async () => {
+    // Get next available lesson order
+    const getNextLessonOrder = () => {
+        if (lessons.length === 0) return 1;
+        const maxOrder = Math.max(...lessons.map(l => l.order));
+        return maxOrder + 1;
+    };
+
+    // Get available lesson orders for a given week
+    const getAvailableLessonOrders = (weekNumber: number) => {
+        const lessonsInWeek = lessons.filter(l => l.week_number === weekNumber);
+        const usedOrders = lessonsInWeek.map(l => l.order);
+        const maxOrder = lessons.length > 0 ? Math.max(...lessons.map(l => l.order)) : 0;
+        const availableOrders: number[] = [];
+        
+        // Suggest orders 1 through max+5
+        for (let i = 1; i <= maxOrder + 5; i++) {
+            if (!usedOrders.includes(i)) {
+                availableOrders.push(i);
+            }
+        }
+        return availableOrders;
+    };
+
+    // Get existing weeks
+    const getExistingWeeks = () => {
+        const weeks = new Set<number>();
+        lessons.forEach(l => {
+            if (l.week_number) weeks.add(l.week_number);
+        });
+        return Array.from(weeks).sort((a, b) => a - b);
+    };
+
+    const validateQuizForm = () => {
+        const errors: {title?: string; weekNumber?: string; lessonOrder?: string} = {};
+        
+        if (!quizFormData.title.trim()) {
+            errors.title = 'Quiz title is required';
+        }
+        
+        if (quizFormData.weekNumber < 1) {
+            errors.weekNumber = 'Week number must be at least 1';
+        }
+        
+        if (quizFormData.lessonOrder < 1) {
+            errors.lessonOrder = 'Lesson order must be at least 1';
+        }
+        
+        // Check if lesson order already exists
+        const existingLesson = lessons.find(l => l.order === quizFormData.lessonOrder);
+        if (existingLesson) {
+            errors.lessonOrder = `Lesson #${quizFormData.lessonOrder} already exists. Choose a different number.`;
+        }
+        
+        setQuizFormErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
+    const handleCreateQuiz = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!user || !courseId) return;
-        const title = prompt("Enter Quiz Title:", "New Quiz");
-        if (!title) return;
+        
+        if (!validateQuizForm()) return;
 
         try {
             // 1. Create Quiz
@@ -253,7 +330,7 @@ export default function TeacherCourseDetail() {
                 .from('quizzes')
                 .insert({
                     course_id: courseId,
-                    title: title,
+                    title: quizFormData.title,
                     created_by: user.id,
                     published: false
                 })
@@ -262,42 +339,15 @@ export default function TeacherCourseDetail() {
 
             if (quizError) throw quizError;
 
-            // 2. Get Next Order
-            const { data: lastLesson } = await supabase
-                .from('lessons')
-                .select('order')
-                .eq('course_id', courseId)
-                .order('order', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            const nextOrder = (lastLesson?.order || 0) + 1;
-
-            const weekInput = prompt('Enter Week Number:', '1');
-            if (!weekInput) return;
-            const weekNumber = Number(weekInput);
-            if (!Number.isInteger(weekNumber) || weekNumber <= 0) {
-                alert('Please enter a valid week number.');
-                return;
-            }
-
-            const orderInput = prompt('Enter Lesson Number:', String(nextOrder));
-            if (!orderInput) return;
-            const lessonOrder = Number(orderInput);
-            if (!Number.isInteger(lessonOrder) || lessonOrder <= 0) {
-                alert('Please enter a valid lesson number.');
-                return;
-            }
-
-            // 3. Create Lesson
+            // 2. Create Lesson
             const { error: lessonError } = await supabase
                 .from('lessons')
                 .insert({
                     course_id: courseId,
-                    title: title,
+                    title: quizFormData.title,
                     type: 'quiz',
-                    order: lessonOrder,
-                    week_number: weekNumber,
+                    order: quizFormData.lessonOrder,
+                    week_number: quizFormData.weekNumber,
                     quiz_id: quiz.id,
                     duration_minutes: 10,
                     is_visible: false // Hidden by default until published
@@ -305,12 +355,51 @@ export default function TeacherCourseDetail() {
 
             if (lessonError) throw lessonError;
 
+            // 3. Reset and close form
+            setQuizFormData({ title: '', weekNumber: 1, lessonOrder: getNextLessonOrder() });
+            setShowQuizForm(false);
+
             // 4. Redirect
             navigate(`/teacher/courses/${courseId}/quiz/${quiz.id}`);
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Error creating quiz:', err);
-            alert('Error creating quiz: ' + (err.message || 'Unknown error'));
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            alert('Error creating quiz: ' + errorMessage);
+        }
+    };
+
+    const handleStartQuizCreation = () => {
+        setQuizFormData({
+            title: '',
+            weekNumber: Math.max(...getExistingWeeks(), 1),
+            lessonOrder: getNextLessonOrder()
+        });
+        setQuizFormErrors({});
+        setShowQuizForm(true);
+    };
+
+    const handleSaveLessonTitle = async (lessonId: string) => {
+        if (!editingLessonTitle.trim()) {
+            setEditingLessonId(null);
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('lessons')
+                .update({ title: editingLessonTitle })
+                .eq('id', lessonId);
+
+            if (error) throw error;
+
+            setLessons(prev => prev.map(l => 
+                l.id === lessonId ? { ...l, title: editingLessonTitle } : l
+            ));
+            setEditingLessonId(null);
+        } catch (err) {
+            console.error('Error updating lesson title:', err);
+            alert('Failed to update lesson title');
         }
     };
 
@@ -437,13 +526,147 @@ export default function TeacherCourseDetail() {
                                     <Plus size={18} /> Add Media
                                 </Link>
                                 <button
-                                    onClick={handleCreateQuiz}
+                                    onClick={handleStartQuizCreation}
                                     className="px-4 py-2.5 bg-white text-blue-600 rounded-lg font-medium hover:shadow-md transition-all flex items-center gap-2 text-sm"
                                 >
                                     <Plus size={18} /> Create Quiz
                                 </button>
                             </div>
                         </div>
+
+                        {/* Quiz Creation Form */}
+                        {showQuizForm && (
+                            <div className="bg-white rounded-xl shadow-lg border-2 border-blue-200 overflow-hidden">
+                                <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
+                                    <h3 className="text-white font-bold flex items-center gap-2">
+                                        <Plus size={20} /> Create New Quiz
+                                    </h3>
+                                    <button
+                                        onClick={() => setShowQuizForm(false)}
+                                        className="text-white/80 hover:text-white transition-colors"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                                <form onSubmit={handleCreateQuiz} className="p-6 space-y-5">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                                            Quiz Title <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={quizFormData.title}
+                                            onChange={e => setQuizFormData({...quizFormData, title: e.target.value})}
+                                            className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                                quizFormErrors.title ? 'border-red-300 bg-red-50' : 'border-slate-300'
+                                            }`}
+                                            placeholder="e.g., Chapter 1 Quiz"
+                                            autoFocus
+                                        />
+                                        {quizFormErrors.title && (
+                                            <p className="text-red-600 text-xs mt-1 flex items-center gap-1">
+                                                <span className="font-bold">!</span> {quizFormErrors.title}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-2">
+                                                Week Number <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <select
+                                                    value={quizFormData.weekNumber}
+                                                    onChange={e => setQuizFormData({
+                                                        ...quizFormData,
+                                                        weekNumber: parseInt(e.target.value)
+                                                    })}
+                                                    className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white ${
+                                                        quizFormErrors.weekNumber ? 'border-red-300 bg-red-50' : 'border-slate-300'
+                                                    }`}
+                                                >
+                                                    {getExistingWeeks().length === 0 && <option value={1}>Week 1 (New)</option>}
+                                                    {getExistingWeeks().map(week => (
+                                                        <option key={week} value={week}>Week {week}</option>
+                                                    ))}
+                                                    {(() => {
+                                                        const maxWeek = Math.max(...getExistingWeeks(), 0);
+                                                        return Array.from({ length: 3 }, (_, i) => maxWeek + i + 1).map(week => (
+                                                            <option key={week} value={week}>Week {week} (New)</option>
+                                                        ));
+                                                    })()}
+                                                </select>
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                    <svg width="12" height="8" viewBox="0 0 12 8" fill="currentColor">
+                                                        <path d="M1 1l5 5 5-5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
+                                                    </svg>
+                                                </div>
+                                            </div>
+                                            {quizFormErrors.weekNumber && (
+                                                <p className="text-red-600 text-xs mt-1 flex items-center gap-1">
+                                                    <span className="font-bold">!</span> {quizFormErrors.weekNumber}
+                                                </p>
+                                            )}
+                                            <p className="text-xs text-slate-500 mt-1">Existing weeks: {getExistingWeeks().join(', ') || 'None'}</p>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-2">
+                                                Lesson Order <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <select
+                                                    value={quizFormData.lessonOrder}
+                                                    onChange={e => setQuizFormData({
+                                                        ...quizFormData,
+                                                        lessonOrder: parseInt(e.target.value)
+                                                    })}
+                                                    className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white ${
+                                                        quizFormErrors.lessonOrder ? 'border-red-300 bg-red-50' : 'border-slate-300'
+                                                    }`}
+                                                >
+                                                    {getAvailableLessonOrders(quizFormData.weekNumber).slice(0, 10).map(order => (
+                                                        <option key={order} value={order}>
+                                                            Lesson #{order}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                    <svg width="12" height="8" viewBox="0 0 12 8" fill="currentColor">
+                                                        <path d="M1 1l5 5 5-5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
+                                                    </svg>
+                                                </div>
+                                            </div>
+                                            {quizFormErrors.lessonOrder && (
+                                                <p className="text-red-600 text-xs mt-1 flex items-center gap-1">
+                                                    <span className="font-bold">!</span> {quizFormErrors.lessonOrder}
+                                                </p>
+                                            )}
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                Available slots shown (avoiding conflicts)
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-3 pt-2">
+                                        <button
+                                            type="submit"
+                                            className="flex-1 bg-blue-600 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            <Check size={18} /> Create Quiz
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowQuizForm(false)}
+                                            className="px-6 py-2.5 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
 
                         {lessons.length === 0 ? (
                             <div className="text-center py-16 bg-white rounded-xl">
@@ -471,19 +694,51 @@ export default function TeacherCourseDetail() {
                                                             {lesson.type === 'text' && <BookOpen size={20} />}
                                                             {lesson.type === 'quiz' && <BookOpen size={20} />}
                                                         </div>
-                                                        <div>
+                                                        <div className="flex-1">
                                                             <div className="flex items-center gap-2">
-                                                                {lesson.type !== 'quiz' ? (
-                                                                    <Link
-                                                                        to={`/teacher/lesson/${lesson.id}`}
-                                                                        className="font-semibold text-slate-900 hover:text-blue-600 transition-colors"
-                                                                    >
-                                                                        {lesson.title}
-                                                                    </Link>
+                                                                {editingLessonId === lesson.id ? (
+                                                                    <div className="flex items-center gap-2 flex-1">
+                                                                        <input
+                                                                            type="text"
+                                                                            value={editingLessonTitle}
+                                                                            onChange={e => setEditingLessonTitle(e.target.value)}
+                                                                            onKeyDown={e => {
+                                                                                if (e.key === 'Enter') handleSaveLessonTitle(lesson.id);
+                                                                                if (e.key === 'Escape') setEditingLessonId(null);
+                                                                            }}
+                                                                            className="font-semibold text-slate-900 border-b-2 border-blue-500 focus:outline-none bg-blue-50 px-2 py-1 rounded"
+                                                                            autoFocus
+                                                                        />
+                                                                        <button
+                                                                            onClick={() => handleSaveLessonTitle(lesson.id)}
+                                                                            className="text-green-600 hover:text-green-700 p-1"
+                                                                            title="Save"
+                                                                        >
+                                                                            <Check size={18} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setEditingLessonId(null)}
+                                                                            className="text-slate-400 hover:text-slate-600 p-1"
+                                                                            title="Cancel"
+                                                                        >
+                                                                            <X size={18} />
+                                                                        </button>
+                                                                    </div>
                                                                 ) : (
-                                                                    <h4 className="font-semibold text-slate-900">{lesson.title}</h4>
+                                                                    <>
+                                                                        {lesson.type !== 'quiz' ? (
+                                                                            <Link
+                                                                                to={`/teacher/lesson/${lesson.id}`}
+                                                                                className="font-semibold text-slate-900 hover:text-blue-600 transition-colors"
+                                                                            >
+                                                                                {lesson.title}
+                                                                            </Link>
+                                                                        ) : (
+                                                                            <h4 className="font-semibold text-slate-900">{lesson.title}</h4>
+                                                                        )}
+                                                                        {!lesson.is_visible && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase font-bold">Hidden</span>}
+                                                                    </>
                                                                 )}
-                                                                {!lesson.is_visible && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase font-bold">Hidden</span>}
                                                             </div>
                                                             <p className="text-sm text-slate-500 capitalize">
                                                                 {lesson.type} • {lesson.week_number ? `Week ${lesson.week_number}` : 'No week'} • Lesson {lesson.order}
@@ -508,24 +763,18 @@ export default function TeacherCourseDetail() {
                                                                 <ExternalLink size={18} />
                                                             </Link>
                                                         )}
-                                                        <button
-                                                            onClick={() => {
-                                                                const newTitle = prompt('Edit Lesson Title:', lesson.title);
-                                                                if (newTitle && newTitle !== lesson.title) {
-                                                                    supabase.from('lessons').update({ title: newTitle }).eq('id', lesson.id).then(({ error }) => {
-                                                                        if (!error) {
-                                                                            setLessons(prev => prev.map(l => l.id === lesson.id ? { ...l, title: newTitle } : l));
-                                                                        } else {
-                                                                            alert('Failed to update title');
-                                                                        }
-                                                                    });
-                                                                }
-                                                            }}
-                                                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                            title="Edit Title"
-                                                        >
-                                                            <Edit size={18} />
-                                                        </button>
+                                                        {editingLessonId !== lesson.id && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingLessonId(lesson.id);
+                                                                    setEditingLessonTitle(lesson.title);
+                                                                }}
+                                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                                title="Edit Title"
+                                                            >
+                                                                <Edit size={18} />
+                                                            </button>
+                                                        )}
                                                         {/* Quiz Edit Link */}
                                                         {lesson.type === 'quiz' && lesson.quiz_id && (
                                                             <Link
