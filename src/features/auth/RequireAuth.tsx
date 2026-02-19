@@ -17,7 +17,6 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Show error if authentication failed
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -33,8 +32,8 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
                 Retry Connection
               </button>
               <button
-                onClick={() => {
-                  signOut();
+                onClick={async () => {
+                  await signOut();
                   window.location.href = '/#/signin';
                 }}
                 className="bg-transparent text-red-700 border border-red-300 px-4 py-2 rounded hover:bg-red-50 transition-colors w-full text-sm"
@@ -49,7 +48,6 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    // Redirect to sign-in, but save the location they were trying to go to
     return <Navigate to="/signin" state={{ from: location }} replace />;
   }
 

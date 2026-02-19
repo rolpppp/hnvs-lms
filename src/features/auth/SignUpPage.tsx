@@ -22,6 +22,7 @@ export default function SignUpPage() {
     fullName?: string;
   }>({});
   const [loading, setLoading] = useState(false);
+  const [emailVerificationSent, setEmailVerificationSent] = useState(false);
 
   // Validate individual fields
   const validateField = (field: string, value: string) => {
@@ -86,9 +87,17 @@ export default function SignUpPage() {
     setLoading(true);
 
     try {
-      await signUp(email, password, fullName, role, schoolId || undefined);
-      // Navigate based on role
-      navigate(role === 'teacher' ? '/teacher' : '/', { replace: true });
+      const result = await signUp(email, password, fullName, role, schoolId || undefined);
+      
+      // Check if email verification is required
+      if ((result as any)?.emailVerificationRequired) {
+        console.log('Email verification required');
+        setEmailVerificationSent(true);
+        setError(''); // Clear any errors
+      } else {
+        // Navigate based on role (only if no email verification needed)
+        navigate(role === 'teacher' ? '/teacher' : '/', { replace: true });
+      }
     } catch (err: any) {
       console.error('Sign up error:', err);
       setError(err.message || 'Failed to create account. Please try again.');
@@ -119,12 +128,36 @@ export default function SignUpPage() {
 
         {/* Sign Up Form */}
         <div className="bg-white rounded-2xl shadow-2xl p-8">
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-              <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-              <div className="text-sm text-red-800">{error}</div>
+          {emailVerificationSent ? (
+            <div className="text-center py-8">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+                <Mail className="text-green-600" size={32} />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-800 mb-3">Check Your Email</h2>
+              <p className="text-slate-600 mb-2">
+                We've sent a verification link to:
+              </p>
+              <p className="text-blue-900 font-semibold mb-4">{email}</p>
+              <p className="text-sm text-slate-500 mb-6">
+                Click the link in the email to verify your account and complete the sign up process.
+              </p>
+              <div className="border-t pt-6">
+                <Link 
+                  to="/signin" 
+                  className="inline-block text-blue-900 font-medium hover:text-blue-700"
+                >
+                  Return to Sign In
+                </Link>
+              </div>
             </div>
-          )}
+          ) : (
+            <>
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div className="text-sm text-red-800">{error}</div>
+                </div>
+              )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
@@ -267,14 +300,16 @@ export default function SignUpPage() {
             </button>
           </form>
 
-          <div className="mt-6 text-center">
-            <p className="text-sm text-slate-600">
-              Already have an account?{' '}
-              <Link to="/signin" className="text-blue-900 font-medium hover:text-blue-700">
-                Sign In
-              </Link>
-            </p>
-          </div>
+              <div className="mt-6 text-center">
+                <p className="text-sm text-slate-600">
+                  Already have an account?{' '}
+                  <Link to="/signin" className="text-blue-900 font-medium hover:text-blue-700">
+                    Sign In
+                  </Link>
+                </p>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

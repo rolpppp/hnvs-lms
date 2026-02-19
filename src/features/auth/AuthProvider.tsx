@@ -1,5 +1,5 @@
 // src/features/auth/AuthProvider.tsx
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { authService, type UserProfile } from './auth.service';
 
@@ -7,12 +7,20 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: UserProfile | null;
+
+  /** True while we are establishing the auth session (first load or auth events). */
   loading: boolean;
+
+  /** True while we are fetching the user's profile after a session exists. */
+  profileLoading: boolean;
+
   error: string | null;
+
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, role: 'student' | 'teacher', schoolId?: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
+
   isStudent: boolean;
   isTeacher: boolean;
   isAdmin: boolean;
@@ -24,206 +32,185 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    let timeoutId: number;
-    let authSubscription: any;
-    let sessionCheckInterval: number;
-    let visibilityCheckInterval: number;
+
+    let timeoutId: number | undefined;
+    let authSubscription: { unsubscribe: () => void } | undefined;
+
+    let sessionCheckInterval: number | undefined;
+    let visibilityCheckTimeout: number | undefined;
+
+    const stopSessionMonitoring = () => {
+      if (sessionCheckInterval) {
+        clearInterval(sessionCheckInterval);
+        sessionCheckInterval = undefined;
+      }
+    };
+
+    const startSessionMonitoring = () => {
+      stopSessionMonitoring();
+      sessionCheckInterval = window.setInterval(refreshSessionIfNeeded, 4 * 60 * 1000);
+    };
 
     const loadProfile = async (userId: string) => {
+      setProfileLoading(true);
       try {
-        const profile = await authService.getProfile(userId);
+        const p = await authService.getProfile(userId);
         if (!mounted) return;
 
-        if (profile) {
-          setProfile(profile);
+        if (p) {
+          setProfile(p);
           setError(null);
         } else {
           console.error('No profile found for authenticated user');
+          setProfile(null);
           setError('Profile not found. Please contact support.');
         }
       } catch (err: unknown) {
         if (!mounted) return;
-        const error = err as Error;
-        console.error('Error loading profile:', error);
-        setError(error.message || 'Failed to load profile');
+        const e = err as Error;
+        console.error('Error loading profile:', e);
+        setProfile(null);
+        setError(e.message || 'Failed to load profile');
+      } finally {
+        if (mounted) setProfileLoading(false);
       }
     };
 
-    // Proactive session refresh - checks and refreshes if needed
     const refreshSessionIfNeeded = async () => {
       if (!mounted) return;
-      
+
       try {
-        const { data: { session: currentSession }, error: sessionError } = await authService.supabase.auth.getSession();
-        
+        const { data: { session: currentSession }, error: sessionError } =
+          await authService.supabase.auth.getSession();
+
         if (sessionError) {
           console.warn('Session check error:', sessionError);
           return;
         }
 
-        if (!currentSession) {
-          console.log('No session found during refresh check');
-          return;
-        }
+        if (!currentSession) return;
 
-        // Check if token is close to expiry (within 5 minutes)
         const expiresAt = currentSession.expires_at;
-        if (expiresAt) {
-          const now = Math.floor(Date.now() / 1000);
-          const timeUntilExpiry = expiresAt - now;
-          
-          // Refresh if less than 5 minutes remaining
-          if (timeUntilExpiry < 300) {
-            console.log('🔄 Token expiring soon, refreshing session...');
-            const { data, error: refreshError } = await authService.supabase.auth.refreshSession();
-            
-            if (refreshError) {
-              console.error('Failed to refresh session:', refreshError);
-              // Don't set error state here, let auth state handler deal with it
-            } else if (data.session) {
-              console.log('✓ Session refreshed successfully');
-              setSession(data.session);
-              setUser(data.session.user);
-            }
+        if (!expiresAt) return;
+
+        const now = Math.floor(Date.now() / 1000);
+        const timeUntilExpiry = expiresAt - now;
+
+        if (timeUntilExpiry < 300) {
+          console.log('🔄 Token expiring soon, refreshing session...');
+          const { data, error: refreshError } = await authService.supabase.auth.refreshSession();
+
+          if (refreshError) {
+            console.error('Failed to refresh session:', refreshError);
+            return;
+          }
+
+          if (data.session && mounted) {
+            console.log('✓ Session refreshed successfully');
+            setSession(data.session);
+            setUser(data.session.user);
           }
         }
       } catch (err) {
         console.error('Error in session refresh:', err);
-        // Don't throw or set error - this is a background operation
       }
     };
 
-    // Handle visibility change - refresh session when tab becomes visible
     const handleVisibilityChange = async () => {
       if (!mounted) return;
-      
       if (document.visibilityState === 'visible') {
         console.log('Tab visible, checking session validity...');
         await refreshSessionIfNeeded();
       }
     };
 
-    const initAuth = async () => {
-      try {
-        // Set up auth state listener FIRST
-        const { data: { subscription } } = authService.onAuthStateChange(
-          async (event, session) => {
-            if (!mounted) return;
+    const applySessionState = async (incomingSession: Session | null) => {
+      setSession(incomingSession);
+      setUser(incomingSession?.user ?? null);
 
-            console.log('Auth state changed:', event, session?.user?.id ? 'User ID: ' + session.user.id : 'No user');
-
-            // Clear timeout on any auth event
-            if (timeoutId) clearTimeout(timeoutId);
-
-            setSession(session);
-            setUser(session?.user ?? null);
-            setLoading(false);
-
-            if (session?.user) {
-              await loadProfile(session.user.id);
-              
-              // Start session monitoring when user signs in
-              if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                console.log('✓ Starting session monitoring');
-                
-                // Clear any existing intervals
-                if (sessionCheckInterval) clearInterval(sessionCheckInterval);
-                
-                // Check session every 4 minutes
-                sessionCheckInterval = window.setInterval(refreshSessionIfNeeded, 4 * 60 * 1000);
-              }
-            } else {
-              setProfile(null);
-              setError(null);
-              
-              // Clear monitoring when user signs out
-              if (sessionCheckInterval) {
-                clearInterval(sessionCheckInterval);
-                sessionCheckInterval = 0;
-              }
-            }
-          }
-        );
-
-        authSubscription = subscription;
-
-        // Check if unmounted during async operation
-        if (!mounted) {
-          subscription.unsubscribe();
-          return;
-        }
-
-        // Now check for existing session
-        const session = await authService.getSession();
-
-        if (!mounted) {
-          subscription.unsubscribe();
-          return;
-        }
-
-        // Clear timeout on successful session check
-        if (timeoutId) clearTimeout(timeoutId);
-
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          await loadProfile(session.user.id);
-        } else {
-          // No session, clear loading immediately
-          setLoading(false);
-        }
-
-        // Only set loading false after profile loads or no session
-        if (mounted && session?.user) {
-          setLoading(false);
-        }
-
-      } catch (err: unknown) {
-        if (!mounted) return;
-        const error = err as Error;
-        console.error('Error loading session:', error);
-        setError(error.message || 'Failed to load session');
-        setLoading(false);
+      if (incomingSession?.user) {
+        await loadProfile(incomingSession.user.id);
+        startSessionMonitoring();
+      } else {
+        setProfile(null);
+        setError(null);
+        stopSessionMonitoring();
       }
     };
 
-    // Safety timeout - extended for better reliability
-    timeoutId = window.setTimeout(() => {
-      if (mounted && loading) {
-        console.error('Auth initialization timed out');
-        setError('Connection timed out. Please refresh the page.');
+    const initAuth = async () => {
+      try {
+        setLoading(true);
+
+        const { data: { subscription } } = authService.onAuthStateChange(async (_event, s) => {
+          if (!mounted) return;
+
+          if (timeoutId) clearTimeout(timeoutId);
+
+          // Keep loading=true until profile is loaded (prevents RequireRole redirect loops).
+          setLoading(true);
+          await applySessionState(s);
+          if (mounted) setLoading(false);
+        });
+
+        authSubscription = subscription;
+        if (!mounted) {
+          subscription.unsubscribe();
+          return;
+        }
+
+        // Existing session on reload / initial load
+        const existingSession = await authService.getSession();
+        if (!mounted) return;
+
+        if (timeoutId) clearTimeout(timeoutId);
+
+        await applySessionState(existingSession);
+        if (mounted) setLoading(false);
+
+        if (document.visibilityState === 'visible') {
+          visibilityCheckTimeout = window.setTimeout(refreshSessionIfNeeded, 2000);
+        }
+      } catch (err: unknown) {
+        if (!mounted) return;
+        const e = err as Error;
+        console.error('Error loading session:', e);
+        setError(e.message || 'Failed to load session');
         setLoading(false);
+        setProfileLoading(false);
       }
-    }, 15000); // Extended to 15s for better reliability
+    };
 
-    // Start initialization
+    timeoutId = window.setTimeout(() => {
+      if (!mounted) return;
+      if (loading || profileLoading) {
+        console.error('Auth initialization timed out');
+        setError('Connection timed out while initializing authentication. Please refresh the page.');
+        setLoading(false);
+        setProfileLoading(false);
+      }
+    }, 30000);
+
     initAuth();
-
-    // Set up visibility change listener
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Initial check when component mounts (if already visible)
-    if (document.visibilityState === 'visible') {
-      visibilityCheckInterval = window.setTimeout(refreshSessionIfNeeded, 2000);
-    }
-
-    // Cleanup
     return () => {
       mounted = false;
       if (timeoutId) clearTimeout(timeoutId);
-      if (sessionCheckInterval) clearInterval(sessionCheckInterval);
-      if (visibilityCheckInterval) clearTimeout(visibilityCheckInterval);
-      if (authSubscription) {
-        authSubscription.unsubscribe();
-      }
+      if (visibilityCheckTimeout) clearTimeout(visibilityCheckTimeout);
+      stopSessionMonitoring();
+      if (authSubscription) authSubscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const signIn = async (email: string, password: string) => {
@@ -231,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
     setSession(session);
     setProfile(profile);
+    setError(null);
   };
 
   const signUp = async (email: string, password: string, fullName: string, role: 'student' | 'teacher', schoolId?: string) => {
@@ -238,6 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
     setSession(session);
     setProfile(profile);
+    setError(null);
   };
 
   const signOut = async () => {
@@ -248,15 +237,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
   };
 
-  const clearError = () => {
-    setError(null);
-  };
+  const clearError = () => setError(null);
 
-  const value: AuthContextType = {
+  const value: AuthContextType = useMemo(() => ({
     user,
     session,
     profile,
     loading,
+    profileLoading,
     error,
     signIn,
     signUp,
@@ -265,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isStudent: profile?.role === 'student',
     isTeacher: profile?.role === 'teacher',
     isAdmin: profile?.role === 'admin',
-  };
+  }), [user, session, profile, loading, profileLoading, error]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

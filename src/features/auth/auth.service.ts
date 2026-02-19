@@ -1,10 +1,18 @@
 // src/features/auth/auth.service.ts
 import { supabase } from '../../lib/supabase';
 
+class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
 const withTimeout = async <T>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
   const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(message)), ms);
+    timeoutId = setTimeout(() => reject(new TimeoutError(message)), ms);
   });
 
   try {
@@ -14,41 +22,64 @@ const withTimeout = async <T>(promise: Promise<T>, ms: number, message: string):
   }
 };
 
-// Retry with exponential backoff for network errors
-const withRetry = async <T>(
-  fn: () => Promise<T>, 
-  maxRetries: number = 3, 
-  baseDelay: number = 1000
-): Promise<T> => {
-  let lastError: Error | null = null;
-  
+const isRetryable = (error: any) => {
+  if (!error) return false;
+
+  // Timeouts -> retryable
+  if (error.name === 'TimeoutError') return true;
+
+  // Supabase fetch/network-ish errors
+  const msg = String(error.message ?? '');
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) return true;
+
+  // PostgREST 5xx
+  if (typeof error.status === 'number' && error.status >= 500) return true;
+
+  return false;
+};
+
+const isNonRetryable = (error: any) => {
+  const msg = String(error.message ?? '');
+
+  // Auth / validation -> don't retry
+  if (
+    msg.includes('Invalid login') ||
+    msg.includes('Email') ||
+    msg.includes('Password') ||
+    error.status === 400 ||
+    error.status === 401 ||
+    error.status === 403 ||
+    error.status === 422
+  ) return true;
+
+  // Expected "no rows found"
+  if (error.code === 'PGRST116') return true;
+
+  return false;
+};
+
+const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 2, baseDelay = 800): Promise<T> => {
+  let lastError: any = null;
+
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await fn();
     } catch (error: any) {
       lastError = error;
-      
-      // Don't retry on auth errors or validation errors
-      if (error.message?.includes('Invalid login') || 
-          error.message?.includes('Email') ||
-          error.message?.includes('Password') ||
-          error.status === 400 ||
-          error.status === 401 ||
-          error.status === 422) {
-        throw error;
-      }
-      
-      // Retry on network errors or timeouts
-      const isLastRetry = i === maxRetries - 1;
-      if (!isLastRetry) {
+
+      if (isNonRetryable(error)) throw error;
+      if (!isRetryable(error)) throw error;
+
+      const isLast = i === maxRetries - 1;
+      if (!isLast) {
         const delay = baseDelay * Math.pow(2, i);
-        console.log(`Retry ${i + 1}/${maxRetries} after ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        if (import.meta.env.DEV) console.log(`Retry ${i + 1}/${maxRetries} after ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
       }
     }
   }
-  
-  throw lastError || new Error('Operation failed after retries');
+
+  throw lastError ?? new Error('Operation failed after retries');
 };
 
 export interface UserProfile {
@@ -89,12 +120,50 @@ export const authService = {
         throw new Error('Sign-in failed: No user data returned');
       }
 
-      // Fetch profile
-      const profile = await this.getProfile(data.user.id);
+      // Check if email is verified (when email verification is enabled)
+      if (data.user.email && !data.user.email_confirmed_at) {
+        console.warn('Email not verified for user:', data.user.email);
+        throw new Error('Please verify your email before signing in. Check your inbox for the verification link.');
+      }
 
+      // Fetch profile
+      let profile = await this.getProfile(data.user.id);
+
+      // If profile doesn't exist, create one with default role
       if (!profile) {
-        console.error('Profile not found for user:', data.user.id);
-        throw new Error('User profile not found. Please contact support or try signing up again.');
+        console.log('Profile not found for user:', data.user.id, '- creating default profile');
+        
+        // Extract name from email as fallback
+        const emailName = data.user.email?.split('@')[0] || 'User';
+        const defaultFullName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
+        
+        try {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              id: data.user.id,
+              role: 'student', // Default to student role
+              full_name: defaultFullName,
+              school_id: null,
+            });
+
+          if (profileError) {
+            console.error('Failed to create profile during sign-in:', profileError);
+            throw new Error('Failed to create user profile. Please try signing up with a role selection.');
+          }
+
+          // Fetch the newly created profile
+          profile = await this.getProfile(data.user.id);
+          
+          if (!profile) {
+            throw new Error('Profile creation verification failed. Please try again.');
+          }
+          
+          console.log('✓ Profile created successfully during sign-in with default role: student');
+        } catch (err) {
+          console.error('Error creating profile during sign-in:', err);
+          throw err;
+        }
       }
 
       console.log('✓ Sign in successful:', data.user.email);
@@ -104,6 +173,7 @@ export const authService = {
       throw err;
     }
   },
+
 
   /**
    * Sign up with email, password, and role
@@ -198,7 +268,20 @@ export const authService = {
         throw new Error(`Failed to create user profile: ${profileError.message}. Please contact support or try again.`);
       }
 
-      console.log('Profile created successfully, fetching profile...');
+      console.log('Profile created successfully');
+      
+      // With email verification enabled, session might be null until email is confirmed
+      if (!data.session) {
+        console.log('Email verification required - no session created yet');
+        return {
+          user: data.user,
+          session: null,
+          profile: null,
+          emailVerificationRequired: true,
+        };
+      }
+
+      // If session exists (no email verification), fetch profile
       const profile = await this.getProfile(data.user.id);
 
       if (!profile) {
@@ -222,34 +305,26 @@ export const authService = {
   },
 
   async getSession() {
-    try {
-      const sessionResponse = await withRetry(() =>
-        withTimeout(
-          supabase.auth.getSession(),
-          15000, // Increased timeout
-          'Session check timed out. Please check your connection.'
-        ),
-        2 // Retry once on network errors
-      );
-      const { data, error } = sessionResponse;
-      if (error) {
-        console.error('Session retrieval error:', error);
-        throw error;
-      }
-      
-      if (data.session) {
-        console.log('✓ Session active:', data.session.user.email);
-      } else {
-        console.log('✗ No active session');
-      }
-      
-      return data.session;
-    } catch (err) {
-      console.error('Session check failed:', err);
-      // Don't throw on session check failures - return null instead
-      return null;
-    }
-  },
+  try {
+    const sessionResponse = await withRetry(() =>
+      withTimeout(
+        supabase.auth.getSession(),
+        25000, // ✅ bump: school Wi-Fi / cold start safe
+        'Session check timed out.'
+      ),
+      2
+    );
+
+    const { data, error } = sessionResponse;
+    if (error) throw error;
+
+    return data.session;
+  } catch (err: any) {
+    // ✅ soft fail: not fatal; avoid noisy stack traces
+    if (import.meta.env.DEV) console.warn('getSession soft-failed:', err?.message ?? err);
+    return null;
+  }
+},
 
   /**
    * Refresh the current session
@@ -284,39 +359,45 @@ export const authService = {
    * Get user profile from database
    */
   async getProfile(userId: string): Promise<UserProfile | null> {
-    try {
-      const profileResponse = await withRetry(() =>
-        withTimeout(
-          supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .single() as unknown as Promise<any>,
-          15000, // Increased timeout
-          'Profile request timed out. Please check your connection.'
-        ),
-        2 // Retry once on network errors
-      );
-      const { data, error } = profileResponse as { data: UserProfile | null; error: any };
+  try {
+    const profileResponse = await withRetry(() =>
+      withTimeout(
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single() as unknown as Promise<any>,
+        25000, // ✅ bump timeout
+        'Profile request timed out.'
+      ),
+      2
+    );
 
-      if (error) {
-        // PGRST116 = 'No rows found' - this is expected for new users before profile creation
-        if (error.code === 'PGRST116') {
-          console.warn('Profile not found for user:', userId);
-          return null;
-        }
+    const { data, error } = profileResponse as { data: UserProfile | null; error: any };
 
-        console.error('Failed to fetch profile:', error);
-        throw new Error(`Failed to fetch profile: ${error.message}`);
+    if (error) {
+      if (error.code === 'PGRST116') return null; // expected
+
+      // RLS / forbidden should NOT be swallowed
+      if (error.status === 401 || error.status === 403) {
+        throw new Error(`Profile access denied (RLS/permissions): ${error.message}`);
       }
 
-      console.log('Profile loaded successfully:', data);
-      return data;
-    } catch (err) {
-      console.error('Error in getProfile:', err);
-      throw err;
+      throw new Error(`Failed to fetch profile: ${error.message}`);
     }
-  },
+
+    return data;
+  } catch (err: any) {
+    // ✅ soft fail for timeouts/network only
+    if (err?.name === 'TimeoutError' || isRetryable(err)) {
+      if (import.meta.env.DEV) console.warn('getProfile soft-timeout:', err?.message ?? err);
+      return null;
+    }
+
+    // Real errors still bubble up
+    throw err;
+  }
+},
 
   /**
    * Check if current user has a specific role
