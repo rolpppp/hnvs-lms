@@ -1,37 +1,33 @@
 // src/lib/supabase.ts
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error(
-    "Missing Supabase environment variables. Please check your .env file."
-  );
-}
+const globalForSupabase = globalThis as any;
 
-console.log('🔌 Supabase Config:', {
-  url: supabaseUrl,
-  keyLength: supabaseKey?.length,
-  keyStart: supabaseKey?.substring(0, 10) + '...'
-});
-
-export const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false,
-    storage: window.localStorage,
-    storageKey: 'hnvs-lms-auth',
-    // Refresh session 60 seconds before expiration (default is 3600s token lifetime)
-    flowType: 'pkce',
-  },
-  global: {
-    headers: {
-      'X-Client-Info': 'hnvs-lms',
+export const supabase =
+  globalForSupabase.__hnvs_supabase ??
+  createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+      storage: window.localStorage,
+      storageKey: 'hnvs-lms-auth',
+      // ✅ remove flowType
     },
-  },
-});
+    global: { headers: { 'X-Client-Info': 'hnvs-lms' } },
+  });
 
-// Disable all realtime channels to prevent WebSocket hanging
-supabase.removeAllChannels();
+if (import.meta.env.DEV) globalForSupabase.__hnvs_supabase = supabase;
+
+// ✅ remove removeAllChannels()
+// ✅ remove config console.log (or gate it)
+if (import.meta.env.DEV) {
+  console.log('🔌 Supabase Config:', {
+    url: supabaseUrl,
+    keyLength: supabaseKey.length,
+    keyStart: supabaseKey.slice(0, 10) + '...',
+  });
+}
