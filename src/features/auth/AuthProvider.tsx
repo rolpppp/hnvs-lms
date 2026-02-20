@@ -1,5 +1,5 @@
 // src/features/auth/AuthProvider.tsx
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useRef, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { authService, type UserProfile } from './auth.service';
 
@@ -35,14 +35,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
+
+  const loadedProfileId = useRef<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
     let timeoutId: number | undefined;
     let authSubscription: { unsubscribe: () => void } | undefined;
+
 
     let sessionCheckInterval: number | undefined;
     let visibilityCheckTimeout: number | undefined;
@@ -60,6 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const loadProfile = async (userId: string) => {
+      if (loadedProfileId.current === userId){
+        return;
+      }
+      
       setProfileLoading(true);
       try {
         const p = await authService.getProfile(userId);
@@ -67,10 +73,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (p) {
           setProfile(p);
+          loadedProfileId.current = p.id;
           setError(null);
         } else {
           console.error('No profile found for authenticated user');
           setProfile(null);
+          loadedProfileId.current = null;
           setError('Profile not found. Please contact support.');
         }
       } catch (err: unknown) {
@@ -78,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const e = err as Error;
         console.error('Error loading profile:', e);
         setProfile(null);
+        loadedProfileId.current = null;
         setError(e.message || 'Failed to load profile');
       } finally {
         if (mounted) setProfileLoading(false);
@@ -141,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         startSessionMonitoring();
       } else {
         setProfile(null);
+        loadedProfileId.current = null;
         setError(null);
         stopSessionMonitoring();
       }
