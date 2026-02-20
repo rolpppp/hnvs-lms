@@ -168,17 +168,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // Existing session on reload / initial load
-        const existingSession = await authService.getSession();
-        if (!mounted) return;
+        // const existingSession = await authService.getSession();
+        // if (!mounted) return;
 
-        if (timeoutId) clearTimeout(timeoutId);
+        // if (timeoutId) clearTimeout(timeoutId);
 
-        await applySessionState(existingSession);
-        if (mounted) setLoading(false);
+        // await applySessionState(existingSession);
+        // if (mounted) setLoading(false);
 
-        if (document.visibilityState === 'visible') {
-          visibilityCheckTimeout = window.setTimeout(refreshSessionIfNeeded, 2000);
-        }
+        // if (document.visibilityState === 'visible') {
+        //   visibilityCheckTimeout = window.setTimeout(refreshSessionIfNeeded, 2000);
+        // }
       } catch (err: unknown) {
         if (!mounted) return;
         const e = err as Error;

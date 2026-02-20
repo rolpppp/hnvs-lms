@@ -15,15 +15,12 @@ export const supabase =
       detectSessionInUrl: false,
       storage: window.localStorage,
       storageKey: 'hnvs-lms-auth',
-      // ✅ remove flowType
     },
     global: { headers: { 'X-Client-Info': 'hnvs-lms' } },
   });
 
 if (import.meta.env.DEV) globalForSupabase.__hnvs_supabase = supabase;
 
-// ✅ remove removeAllChannels()
-// ✅ remove config console.log (or gate it)
 if (import.meta.env.DEV) {
   console.log('🔌 Supabase Config:', {
     url: supabaseUrl,
