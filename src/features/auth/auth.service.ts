@@ -240,11 +240,11 @@ export const authService = {
       const sessionResponse = await withRetry(() =>
         withTimeout(
           supabase.auth.getSession(),
-          8000, // Reduced from 25000ms for faster fail
+          8000, 
           'Session check timed out.'
         ),
-        1 // Reduced maxRetries
-      );
+        1 
+      ) as { data: { session: any }; error: any }; // <-- Add explicit type assertion here
 
       const { data, error } = sessionResponse;
       if (error) throw error;
@@ -261,11 +261,11 @@ export const authService = {
    */
   async refreshSession() {
     try {
-      const { data, error } = await withTimeout(
+      const { data, error } = (await withTimeout(
         supabase.auth.refreshSession(),
-        8000, // Reduced from 15000ms
+        8000, 
         'Session refresh timed out.'
-      );
+      )) as { data: { session: any }; error: any }; 
       
       if (error) throw error;
       return data.session || null;
