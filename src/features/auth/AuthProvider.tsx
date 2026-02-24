@@ -228,6 +228,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
     setSession(session);
     setProfile(profile);
+    // Mark the profile as already loaded so the subsequent onAuthStateChange(SIGNED_IN)
+    // event doesn't trigger a redundant Supabase round-trip.
+    if (profile) loadedProfileId.current = profile.id;
     setError(null);
   };
 
@@ -236,6 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
     setSession(session);
     setProfile(profile);
+    if (profile) loadedProfileId.current = profile.id;
     setError(null);
   };
 

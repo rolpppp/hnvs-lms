@@ -3,13 +3,46 @@ import { supabase } from '../lib/supabase';
 import { db } from '../lib/db';
 import { useAuth } from '../features/auth/AuthProvider';
 
+// ---------------------------------------------------------------------------
+// Sync throttle – prevents hammering Supabase on every Dashboard render or
+// React hot-reload. We persist the timestamp in localStorage so it survives
+// page refreshes within the same browser session.
+// ---------------------------------------------------------------------------
+const SYNC_THROTTLE_KEY = 'hnvs_course_sync_ts';
+const SYNC_THROTTLE_MS = 3 * 60 * 1000; // 3 minutes
+
+function isSyncThrottled(): boolean {
+  try {
+    const raw = localStorage.getItem(SYNC_THROTTLE_KEY);
+    if (!raw) return false;
+    return Date.now() - Number(raw) < SYNC_THROTTLE_MS;
+  } catch {
+    return false;
+  }
+}
+
+function markSyncTime(): void {
+  try {
+    localStorage.setItem(SYNC_THROTTLE_KEY, String(Date.now()));
+  } catch {
+    // ignore
+  }
+}
+
 export function useCourseSync() {
     const { user } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const syncCourses = useCallback(async () => {
+    const syncCourses = useCallback(async (force = false) => {
         if (!navigator.onLine) return; // Can't sync if offline
+
+        // Skip if throttled unless caller explicitly forces a refresh
+        if (!force && isSyncThrottled()) {
+            console.log('Course sync throttled – skipping (last sync < 3 min ago).');
+            return;
+        }
+
         console.log('Syncing courses...');
         setLoading(true);
         setError(null);
@@ -17,8 +50,10 @@ export function useCourseSync() {
         try {
             if (!user) throw new Error("User not authenticated");
 
-            // 1. Determine Visible Courses
-            // A. Fetch courses created by me
+            // ----------------------------------------------------------------
+            // 1. Determine Visible Courses (2 queries instead of 3)
+            // A. Courses I created (teacher view)
+            // ----------------------------------------------------------------
             const { data: myCourses, error: myError } = await supabase
                 .from('courses')
                 .select('id, code, title, description')
@@ -26,26 +61,19 @@ export function useCourseSync() {
 
             if (myError) throw myError;
 
-            // B. Fetch enrollments to find other courses
+            // B. Courses I'm enrolled in – fetch course data in the same query
+            //    via the Supabase foreign-key join instead of a separate round-trip.
             const { data: myEnrollments, error: enrollError } = await supabase
                 .from('enrollments')
-                .select('course_id')
+                .select('course_id, courses(id, code, title, description)')
                 .eq('student_id', user.id);
 
             if (enrollError) throw enrollError;
 
-            const enrolledCourseIds = myEnrollments?.map(e => e.course_id) || [];
-
-            // C. Fetch enrolled courses (if any)
-            let enrolledCourses: any[] = [];
-            if (enrolledCourseIds.length > 0) {
-                const { data, error } = await supabase
-                    .from('courses')
-                    .select('id, code, title, description')
-                    .in('id', enrolledCourseIds);
-                if (error) throw error;
-                enrolledCourses = data || [];
-            }
+            // Flatten joined enrollment rows into the same course shape
+            const enrolledCourses = (myEnrollments ?? [])
+                .map((e: any) => e.courses)
+                .filter(Boolean);
 
             // D. Merge lists (Handle duplicates if looking at own course as student)
             const allVisibleCourses = [...(myCourses || []), ...enrolledCourses];
@@ -229,29 +257,21 @@ export function useCourseSync() {
                 }
             }
 
-            // 2. Fetch Enrollments for current user
-            if (user) {
-                const { data: enrollments, error: enrollError } = await supabase
-                    .from('enrollments')
-                    .select('course_id, status, enrolled_at')
-                    .eq('student_id', user.id);
-
-                if (enrollError) throw enrollError;
-
-                if (enrollments) {
-                    await db.transaction('rw', db.enrollments, async () => {
-                        for (const e of enrollments) {
-                            await db.enrollments.put({
-                                courseId: e.course_id,
-                                studentId: user.id,
-                                status: e.status as "active" | "inactive" | "blocked",
-                                enrolledAt: new Date(e.enrolled_at).getTime(),
-                            });
-                        }
-                    });
-                }
+            // 2. Persist enrollment records from the already-fetched join data
+            if (user && myEnrollments) {
+                await db.transaction('rw', db.enrollments, async () => {
+                    for (const e of myEnrollments) {
+                        await db.enrollments.put({
+                            courseId: e.course_id,
+                            studentId: user.id,
+                            status: 'active',
+                            enrolledAt: Date.now(),
+                        });
+                    }
+                });
             }
 
+            markSyncTime();
             console.log('Courses synced successfully');
 
         } catch (err: any) {

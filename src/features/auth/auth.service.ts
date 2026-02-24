@@ -90,6 +90,50 @@ export interface UserProfile {
   created_at: string;
 }
 
+// ---------------------------------------------------------------------------
+// Profile session cache – avoids a Supabase round-trip on every page load.
+// Uses sessionStorage (per-tab, cleared on tab close) with a short TTL so
+// role changes propagate within a few minutes without a full sign-out.
+// ---------------------------------------------------------------------------
+const PROFILE_CACHE_PREFIX = 'hnvs_profile_';
+const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCachedProfile(userId: string): UserProfile | null {
+  try {
+    const raw = sessionStorage.getItem(PROFILE_CACHE_PREFIX + userId);
+    if (!raw) return null;
+    const { profile, cachedAt } = JSON.parse(raw) as { profile: UserProfile; cachedAt: number };
+    if (Date.now() - cachedAt > PROFILE_CACHE_TTL_MS) {
+      sessionStorage.removeItem(PROFILE_CACHE_PREFIX + userId);
+      return null;
+    }
+    return profile;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedProfile(profile: UserProfile): void {
+  try {
+    sessionStorage.setItem(
+      PROFILE_CACHE_PREFIX + profile.id,
+      JSON.stringify({ profile, cachedAt: Date.now() }),
+    );
+  } catch {
+    // sessionStorage full or unavailable – silently skip
+  }
+}
+
+function clearProfileCache(): void {
+  try {
+    Object.keys(sessionStorage)
+      .filter(k => k.startsWith(PROFILE_CACHE_PREFIX))
+      .forEach(k => sessionStorage.removeItem(k));
+  } catch {
+    // ignore
+  }
+}
+
 export const authService = {
   // Expose supabase client for direct access
   supabase,
@@ -147,6 +191,7 @@ export const authService = {
           }
 
           profile = newProfile as UserProfile;
+          setCachedProfile(profile); // warm cache for the upcoming onAuthStateChange round-trip
           console.log('✓ Profile created successfully during sign-in with default role: student');
         } catch (err) {
           console.error('Error creating profile during sign-in:', err);
@@ -231,6 +276,7 @@ export const authService = {
    * Sign out
    */
   async signOut() {
+    clearProfileCache();
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   },
@@ -276,9 +322,15 @@ export const authService = {
   },
 
   /**
-   * Get user profile from database
+   * Get user profile from database.
+   * Checks a short-lived sessionStorage cache first to avoid hitting the DB
+   * on every auth state change / page reload.
    */
   async getProfile(userId: string): Promise<UserProfile | null> {
+    // Serve from cache when available
+    const cached = getCachedProfile(userId);
+    if (cached) return cached;
+
     try {
       const profileResponse = await withRetry(() =>
         withTimeout(
@@ -303,6 +355,7 @@ export const authService = {
         throw new Error(`Failed to fetch profile: ${error.message}`);
       }
 
+      if (data) setCachedProfile(data);
       return data;
     } catch (err: any) {
       if (err?.name === 'TimeoutError' || isRetryable(err)) {
