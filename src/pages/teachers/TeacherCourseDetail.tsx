@@ -26,7 +26,6 @@ interface Lesson {
 interface StudentMetric {
     id: string;
     name: string;
-    email: string; // from profile
     joinedAt: string;
     quizzesTaken: number;
     avgScore: number;
@@ -151,7 +150,6 @@ export default function TeacherCourseDetail() {
                 return {
                     id: enroll.student_id,
                     name: profile?.full_name || 'Unknown Student',
-                    email: `student-${enroll.student_id.slice(0, 4)}@example.com`, // Placeholder
                     joinedAt: new Date(enroll.enrolled_at).toLocaleDateString(),
                     quizzesTaken: studentSubs.length,
                     avgScore: parseFloat(avg)
@@ -856,8 +854,7 @@ export default function TeacherCourseDetail() {
                         </div>
 
                         {students.filter(s =>
-                            s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            s.email.toLowerCase().includes(searchQuery.toLowerCase())
+                            s.name.toLowerCase().includes(searchQuery.toLowerCase())
                         ).length === 0 ? (
                             <div className="text-center py-16 bg-white rounded-xl">
                                 <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -879,13 +876,11 @@ export default function TeacherCourseDetail() {
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {students.filter(s =>
-                                            s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                            s.email.toLowerCase().includes(searchQuery.toLowerCase())
+                                            s.name.toLowerCase().includes(searchQuery.toLowerCase())
                                         ).map(student => (
                                             <tr key={student.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-6 py-4">
                                                     <div className="font-medium text-slate-900">{student.name}</div>
-                                                    <div className="text-xs text-slate-400">{student.email}</div>
                                                 </td>
                                                 <td className="px-6 py-4 text-slate-600">
                                                     {student.joinedAt}

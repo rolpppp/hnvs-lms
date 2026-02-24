@@ -9,6 +9,7 @@ interface Course {
     code: string;
     title: string;
     description: string | null;
+    created_by: string;
     created_at: string;
 }
 
@@ -32,10 +33,28 @@ export default function CourseManager() {
     const fetchCourses = async () => {
         if (!user) return;
         try {
+            // Join through course_teachers so we get every course the current
+            // teacher either created or was explicitly assigned to.
+            // The SELECT RLS policy on courses also allows created_by access,
+            // so both owned and co-taught courses are returned.
+            const { data: ctRows, error: ctError } = await supabase
+                .from('course_teachers')
+                .select('course_id')
+                .eq('teacher_id', user.id);
+
+            if (ctError) throw ctError;
+
+            const courseIds = (ctRows || []).map(r => r.course_id);
+
+            if (courseIds.length === 0) {
+                setCourses([]);
+                return;
+            }
+
             const { data, error } = await supabase
                 .from('courses')
                 .select('*')
-                .eq('created_by', user.id)
+                .in('id', courseIds)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -66,6 +85,19 @@ export default function CourseManager() {
                 .single();
 
             if (error) throw error;
+
+            // Ensure the creator is registered in course_teachers so that
+            // is_teacher_for_course() returns true for all downstream policies
+            // (lessons, quizzes, assignments, etc.). The DB trigger also handles
+            // this, but we do it client-side as well for resilience.
+            const { error: ctError } = await supabase
+                .from('course_teachers')
+                .insert({ course_id: data.id, teacher_id: user.id });
+
+            if (ctError && ctError.code !== '23505') {
+                // 23505 = unique violation (already inserted by trigger), not a real error
+                console.warn('Could not add teacher to course_teachers:', ctError.message);
+            }
 
             setCourses([data, ...courses]);
             setIsCreating(false);
@@ -237,17 +269,19 @@ export default function CourseManager() {
                                     >
                                         <Edit size={18} />
                                     </Link>
-                                    <button
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            // prevent link click
-                                            handleDelete(course.id);
-                                        }}
-                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="Delete Course"
-                                    >
-                                        <Trash2 size={18} />
-                                    </button>
+                                    {course.created_by === user?.id && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                // prevent link click
+                                                handleDelete(course.id);
+                                            }}
+                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Delete Course"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))}
