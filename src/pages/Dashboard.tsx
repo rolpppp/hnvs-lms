@@ -26,7 +26,7 @@ function Dashboard() {
   const courses = useLiveQuery(() => db.courses.toArray());
 
   // Data Sync Hooks
-  const { syncCourses, loading: syncing } = useCourseSync();
+  const { syncCourses, loading: syncing, error: syncError } = useCourseSync();
 
   // 2. Initial Data Load & Sync
   useEffect(() => {
@@ -143,6 +143,19 @@ function Dashboard() {
             <User size={20} className="sm:w-6 sm:h-6" />
           </div>
         </div>
+
+        {syncError && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <span>Could not load courses: {syncError}</span>
+            <button
+              onClick={() => syncCourses(true)}
+              disabled={syncing}
+              className="shrink-0 rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {syncing ? 'Retrying…' : 'Retry'}
+            </button>
+          </div>
+        )}
 
         {/* Course Grid */}
         {!courses || syncing ? (

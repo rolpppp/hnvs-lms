@@ -38,10 +38,9 @@ export function useCourseSync() {
     const [error, setError] = useState<string | null>(null);
 
     const syncCourses = useCallback(async (force = false) => {
-        if (!navigator.onLine) return; // Can't sync if offline
-        if (!user) return; // Can't sync without a user
+        if (!navigator.onLine) return;
+        if (!user) return;
 
-        // Skip if throttled unless caller explicitly forces a refresh
         if (!force && isSyncThrottled(user.id)) {
             console.log('Course sync throttled – skipping (last sync < 3 min ago).');
             return;
@@ -51,40 +50,39 @@ export function useCourseSync() {
         setLoading(true);
         setError(null);
 
+        // Global 20-second abort so the UI never hangs indefinitely
+        const controller = new AbortController();
+        const abortTimer = window.setTimeout(() => controller.abort(), 20_000);
+
         try {
             // ----------------------------------------------------------------
-            // 1. Determine Visible Courses (2 queries instead of 3)
-            // A. Courses I created (teacher view)
+            // Fetch ALL courses visible to this authenticated user.
+            // RLS policy "courses_select_authenticated" allows any logged-in
+            // user to read all courses, so students see the full catalog even
+            // before they have an enrollment record.
             // ----------------------------------------------------------------
-            const { data: myCourses, error: myError } = await supabase
+            const { data: allCourses, error: coursesError } = await supabase
                 .from('courses')
                 .select('id, code, title, description')
-                .eq('created_by', user.id);
+                .abortSignal(controller.signal);
 
-            if (myError) throw myError;
+            if (coursesError) throw coursesError;
 
-            // B. Courses I'm enrolled in – fetch course data in the same query
-            //    via the Supabase foreign-key join instead of a separate round-trip.
+            const remoteCourses = allCourses ?? [];
+            const courseIds = remoteCourses.map(c => c.id);
+
+            // Fetch my enrollment statuses separately (still needed to track
+            // which courses are "downloaded" locally and for the sync badge)
             const { data: myEnrollments, error: enrollError } = await supabase
                 .from('enrollments')
-                .select('course_id, courses(id, code, title, description)')
+                .select('course_id, status, enrolled_at')
                 .eq('student_id', user.id)
-                .eq('status', 'active');
+                .eq('status', 'active')
+                .abortSignal(controller.signal);
 
             if (enrollError) throw enrollError;
 
-            // Flatten joined enrollment rows into the same course shape
-            const enrolledCourses = (myEnrollments ?? [])
-                .map((e: any) => e.courses)
-                .filter(Boolean);
-
-            // D. Merge lists (Handle duplicates if looking at own course as student)
-            const allVisibleCourses = [...(myCourses || []), ...enrolledCourses];
-            // Remove duplicates by ID
-            const remoteCourses = Array.from(new Map(allVisibleCourses.map(c => [c.id, c])).values());
-            const courseIds = remoteCourses.map(c => c.id);
-
-            if (remoteCourses) {
+            if (remoteCourses.length > 0) {
                 // Bulk put (upsert) courses to local DB
                 const coursesToSave = remoteCourses.map(c => ({
                     id: c.id,
@@ -139,9 +137,8 @@ export function useCourseSync() {
                             quiz_id,
                             lesson_assets(id, kind, storage_path, mime_type)
                         `)
-                        .in('course_id', courseIds);
-                    // .eq('is_visible', true); // Removed to sync all and filter locally
-                    // Let's sync visible for now to respect teacher settings
+                        .in('course_id', courseIds)
+                        .abortSignal(controller.signal);
 
                     if (lessonError) {
                         console.error('Error fetching lessons:', lessonError);
@@ -183,7 +180,8 @@ export function useCourseSync() {
                         .from('quizzes')
                         .select('id, course_id, title, published, allowed_attempts')
                         .in('course_id', courseIds)
-                        .eq('published', true); // Only sync published quizzes
+                        .eq('published', true)
+                        .abortSignal(controller.signal);
 
                     if (quizError) console.error('Error fetching quizzes:', quizError);
 
@@ -195,7 +193,8 @@ export function useCourseSync() {
                             .from('quiz_questions')
                             .select('id, quiz_id, prompt, order')
                             .in('quiz_id', quizIds)
-                            .order('order');
+                            .order('order')
+                            .abortSignal(controller.signal);
 
                         if (qError) console.error('Error fetching questions:', qError);
 
@@ -204,7 +203,8 @@ export function useCourseSync() {
                         const { data: optionsData, error: oError } = await supabase
                             .from('quiz_options')
                             .select('id, question_id, label, is_correct')
-                            .in('question_id', questionIds);
+                            .in('question_id', questionIds)
+                            .abortSignal(controller.signal);
 
                         if (oError) console.error('Error fetching options:', oError);
 
@@ -244,7 +244,8 @@ export function useCourseSync() {
                 const { data: announcementsData, error: annError } = await supabase
                     .from('announcements')
                     .select('*')
-                    .in('course_id', courseIds);
+                    .in('course_id', courseIds)
+                    .abortSignal(controller.signal);
 
                 if (annError) {
                     console.error('Error fetching announcements:', annError);
@@ -270,15 +271,15 @@ export function useCourseSync() {
                 }
             }
 
-            // 2. Persist enrollment records from the already-fetched join data
-            if (user && myEnrollments) {
+            // 2. Persist enrollment records
+            if (user && myEnrollments && myEnrollments.length > 0) {
                 await db.transaction('rw', db.enrollments, async () => {
                     for (const e of myEnrollments) {
                         await db.enrollments.put({
                             courseId: e.course_id,
                             studentId: user.id,
-                            status: 'active',
-                            enrolledAt: Date.now(),
+                            status: (e.status as 'active' | 'inactive' | 'blocked') ?? 'active',
+                            enrolledAt: e.enrolled_at ? new Date(e.enrolled_at).getTime() : Date.now(),
                         });
                     }
                 });
@@ -288,9 +289,15 @@ export function useCourseSync() {
             console.log('Courses synced successfully');
 
         } catch (err: any) {
-            console.error('Course sync failed:', err);
-            setError(err.message);
+            if (err?.name === 'AbortError' || controller.signal.aborted) {
+                console.error('Course sync timed out after 20s');
+                setError('Loading timed out — Supabase took too long. Try refreshing.');
+            } else {
+                console.error('Course sync failed:', err);
+                setError(err.message ?? 'Sync failed');
+            }
         } finally {
+            clearTimeout(abortTimer);
             setLoading(false);
         }
     }, [user]);
