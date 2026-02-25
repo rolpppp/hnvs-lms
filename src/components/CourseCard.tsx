@@ -5,12 +5,16 @@ interface CourseCardProps {
   course: Course;
   onDownload: (id: string) => void;
   isDownloading: boolean;
+  downloadProgress?: number; // 0–100
+  downloadStatus?: string;
 }
 
 export function CourseCard({
   course,
   onDownload,
   isDownloading,
+  downloadProgress,
+  downloadStatus,
 }: CourseCardProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full hover:shadow-lg transition-shadow">
@@ -48,10 +52,20 @@ export function CourseCard({
               }`}
             >
               {isDownloading ? (
-                <>
-                  <Clock size={18} className="animate-spin sm:w-5 sm:h-5" />
-                  Downloading...
-                </>
+                <div className="w-full">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <Clock size={18} className="animate-spin sm:w-5 sm:h-5" />
+                    <span>{downloadStatus || 'Downloading...'}</span>
+                  </div>
+                  {downloadProgress !== undefined && (
+                    <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
+                      <div
+                        className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                        style={{ width: `${downloadProgress}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
               ) : (
                 <>
                   <Download size={18} className="sm:w-5 sm:h-5" />

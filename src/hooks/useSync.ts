@@ -197,36 +197,89 @@ export function useSync() {
         }
       }
 
-      // --- B. SYNC ASSIGNMENTS (Simplified for text) ---
+      // --- B. SYNC ASSIGNMENTS ---
       const pendingAssignments = await db.submissions
         .where("syncStatus")
         .equals("pending")
         .toArray();
 
-      if (pendingAssignments.length > 0) {
-        const payload = pendingAssignments.map((a) => ({
-          assignment_id: a.assignmentId,
-          student_id: a.studentId,
-          content_text: a.textAnswer || '',
-          device_timestamp: new Date(a.timestamp).toISOString(),
-        }));
+      for (const submission of pendingAssignments) {
+        let filePath: string | null = null;
+        let mimeType: string | null = null;
 
-        const { error } = await supabase
-          .from("assignment_submissions")
-          .insert(payload);
+        // Upload file blob to Storage if present
+        if (submission.fileBlob && submission.fileName) {
+          const uid = await getCurrentUserId();
+          const ext = submission.fileName.split('.').pop() || 'bin';
+          const storagePath = `${uid}/${submission.assignmentId}/${submission.timestamp}.${ext}`;
 
-        if (error) {
-          console.warn("Assignment sync failed (Supabase table may not exist):", error.message);
-          // Still mark as synced locally
-        } else {
-          console.log(`Synced ${pendingAssignments.length} assignment submissions`);
+          const { error: uploadError } = await supabase.storage
+            .from('assignment-submissions')
+            .upload(storagePath, submission.fileBlob, {
+              upsert: true,
+              contentType: submission.fileBlob.type || 'application/octet-stream',
+            });
+
+          if (uploadError) {
+            console.error(`File upload failed for submission ${submission.id}:`, uploadError.message);
+            // Proceed with text-only sync; file will stay in fileBlob and retry next time
+          } else {
+            filePath = storagePath;
+            mimeType = submission.fileBlob.type || null;
+          }
         }
 
-        await db.submissions
-          .where("id")
-          .anyOf(pendingAssignments.map((a) => a.id as number))
-          .modify({ syncStatus: "synced" });
+        const { error } = await supabase
+          .from('assignment_submissions')
+          .upsert({
+            assignment_id: submission.assignmentId,
+            student_id: submission.studentId,
+            text_answer: submission.textAnswer || null,
+            file_path: filePath,
+            file_name: submission.fileName || null,
+            mime_type: mimeType,
+          }, { onConflict: 'assignment_id,student_id' });
+
+        if (error) {
+          console.error(`Assignment submission sync failed:`, error.message);
+          // Leave as pending for retry
+        } else {
+          await db.submissions.update(submission.id as number, { syncStatus: 'synced' });
+        }
       }
+
+      if (pendingAssignments.length > 0) {
+        console.log(`Processed ${pendingAssignments.length} assignment submission(s)`);
+      }
+      // --- C. SYNC LESSON PROGRESS ---
+      const userId = await getCurrentUserId();
+      if (userId) {
+        const allProgress = await db.lessonProgress
+          .where('studentId')
+          .equals(userId)
+          .toArray();
+
+        if (allProgress.length > 0) {
+          const payload = allProgress.map((p) => ({
+            lesson_id: p.lessonId,
+            student_id: p.studentId,
+            completed: p.completed,
+            completed_at: p.completedAt ? new Date(p.completedAt).toISOString() : null,
+            time_spent_seconds: p.timeSpent,
+          }));
+
+          const { error } = await supabase
+            .from('lesson_progress')
+            .upsert(payload, { onConflict: 'lesson_id,student_id' });
+
+          if (error) {
+            console.error('Lesson progress sync failed:', error.message);
+          } else {
+            console.log(`Synced ${allProgress.length} lesson progress records`);
+          }
+        }
+      }
+
     } catch (err) {
       console.error("Sync failed:", err);
       setSyncError(err instanceof Error ? err.message : "Unknown sync error");

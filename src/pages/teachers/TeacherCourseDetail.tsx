@@ -5,7 +5,6 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../features/auth/AuthProvider';
 import AnnouncementManager from './AnnouncementManager';
 import AssignmentManager from './AssignmentManager';
-import { useBulkEnroll } from '../../hooks/useBulkEnroll';
 
 interface Course {
     id: string;
@@ -62,7 +61,6 @@ export default function TeacherCourseDetail() {
     const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
     const [editingLessonTitle, setEditingLessonTitle] = useState('');
 
-    
     const fetchCourseData = useCallback(async () => {
         try {
             setLoading(true);
@@ -839,73 +837,6 @@ export default function TeacherCourseDetail() {
 
                 {activeTab === 'students' && (
                     <div className="space-y-6">
-                        {/* ── Bulk Enroll Panel ─────────────────────────────── */}
-                        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                            <button
-                                onClick={() => { setShowBulkEnroll(v => !v); resetEnroll(); setEnrollInput(''); }}
-                                className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                            >
-                                <span className="flex items-center gap-2"><Users size={17} /> Bulk Enroll Students</span>
-                                <span className="text-slate-400">{showBulkEnroll ? '▲' : '▼'}</span>
-                            </button>
-
-                            {showBulkEnroll && (
-                                <div className="border-t border-slate-100 px-5 py-4 space-y-3">
-                                    <p className="text-xs text-slate-500">
-                                        Paste student emails — one per line, or comma / semicolon separated.
-                                        Only accounts with the <strong>student</strong> role will be enrolled.
-                                    </p>
-                                    <textarea
-                                        rows={5}
-                                        value={enrollInput}
-                                        onChange={e => { setEnrollInput(e.target.value); resetEnroll(); }}
-                                        placeholder={"student1@school.edu\nstudent2@school.edu"}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-                                    />
-
-                                    {/* Result banner */}
-                                    {enrollResult && (
-                                        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm space-y-1">
-                                            <p className="font-semibold text-green-800">
-                                                ✓ {enrollResult.enrolled} newly enrolled
-                                                {enrollResult.already > 0 && `, ${enrollResult.already} already active`}
-                                            </p>
-                                            {enrollResult.not_found.length > 0 && (
-                                                <p className="text-amber-700">
-                                                    Not found (no student account): {enrollResult.not_found.join(', ')}
-                                                </p>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {enrollError && (
-                                        <p className="text-sm text-red-600 rounded-lg border border-red-200 bg-red-50 px-4 py-2">
-                                            {enrollError}
-                                        </p>
-                                    )}
-
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={async () => {
-                                                if (!courseId) return;
-                                                const res = await bulkEnroll(courseId, enrollInput);
-                                                if (res) { fetchStudentData(); setEnrollInput(''); }
-                                            }}
-                                            disabled={enrolling || !enrollInput.trim()}
-                                            className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                                        >
-                                            {enrolling ? 'Enrolling…' : 'Enroll'}
-                                        </button>
-                                        <button
-                                            onClick={() => { setShowBulkEnroll(false); resetEnroll(); setEnrollInput(''); }}
-                                            className="px-4 py-2 border border-slate-300 text-slate-600 text-sm rounded-lg hover:bg-slate-50 transition-colors"
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
 
                         {/* ── Search + count ────────────────────────────────── */}
                         <div className="flex items-center gap-4 bg-white p-5 rounded-xl shadow-sm">

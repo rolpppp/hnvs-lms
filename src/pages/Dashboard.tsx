@@ -12,13 +12,14 @@ import { CourseCard } from "../components/CourseCard";
 import { useSync } from "../hooks/useSync";
 import { useStorageWarning } from "../hooks/useStorageWarning";
 import { useCourseSync } from "../hooks/useCourseSync";
+import { useDownloadCourse } from "../hooks/useDownloadCourse";
 import { db, type Course } from '../lib/db';
 import { useLiveQuery } from "dexie-react-hooks";
-import { supabase } from "../lib/supabase";
 
 function Dashboard() {
   const { isOnline } = useSync();
   const { storageInfo, showWarning, setShowWarning, canDownload } = useStorageWarning();
+  const { downloadCourse, downloading, progress, status: downloadStatus } = useDownloadCourse();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // 1. Fetch courses from Local DB (Dexie)
@@ -49,20 +50,14 @@ function Dashboard() {
     initData();
   }, [syncCourses]);
 
-  // 3. Simulate "Downloading" a Course Pack
+  // 3. Download a Course Pack (real asset download via useDownloadCourse)
   const handleDownload = async (courseId: string) => {
-    // Prevent navigation to course detail when clicking download button
-    // Note: The onClick in CourseCard should handle startPropagation if needed, 
-    // but here we just handle logic.
-
     if (!isOnline) {
       alert("You need internet to download the initial pack!");
       return;
     }
 
-    // Check storage before downloading
-    const estimatedSizeMB = 20; // Estimate ~20MB per course pack
-
+    const estimatedSizeMB = 20;
     const storageCheck = await canDownload(estimatedSizeMB);
     if (!storageCheck.canDownload) {
       alert(storageCheck.reason || "Not enough storage space");
@@ -70,38 +65,8 @@ function Dashboard() {
     }
 
     setDownloadingId(courseId);
-
-    // Auto-enroll in Supabase
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // Upsert enrollment
-        await supabase.from('enrollments').upsert({
-          course_id: courseId,
-          student_id: user.id,
-          status: 'active'
-        }, { onConflict: 'course_id, student_id' });
-
-        // Also update local enrollment to match
-        await db.enrollments.put({
-          courseId: courseId,
-          studentId: user.id,
-          status: 'active',
-          enrolledAt: Date.now()
-        });
-      }
-    } catch (err) {
-      console.error("Auto-enrollment warning:", err);
-      // We continue with download even if enrollment fails provided we can get content? 
-      // Strictly we might want to stop, but for now allow it.
-    }
-
-    // Fake a 2-second download delay (Simulation of fetching assets)
-    setTimeout(async () => {
-      await db.courses.update(courseId, { isDownloaded: true });
-      setDownloadingId(null);
-      alert("Course Pack Downloaded! You can now access this offline.");
-    }, 2000);
+    await downloadCourse(courseId);
+    setDownloadingId(null);
   };
 
   return (
@@ -178,10 +143,10 @@ function Dashboard() {
               >
                 <CourseCard
                   course={course}
-                  onDownload={(id: string) => {
-                    handleDownload(id);
-                  }}
+                  onDownload={(id: string) => { handleDownload(id); }}
                   isDownloading={downloadingId === course.id}
+                  downloadProgress={downloadingId === course.id ? progress : undefined}
+                  downloadStatus={downloadingId === course.id ? downloadStatus : undefined}
                 />
               </Link>
             ))}
