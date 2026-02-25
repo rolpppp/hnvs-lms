@@ -56,10 +56,10 @@ export function useCourseSync() {
 
         try {
             // ----------------------------------------------------------------
-            // Fetch ALL courses visible to this authenticated user.
-            // RLS policy "courses_select_authenticated" allows any logged-in
-            // user to read all courses, so students see the full catalog even
-            // before they have an enrollment record.
+            // Fetch courses visible to this user.
+            // RLS policy "courses_select_enrolled_or_teacher" restricts
+            // students to only their active enrollments, so this returns
+            // exactly the courses that should appear on the dashboard.
             // ----------------------------------------------------------------
             const { data: allCourses, error: coursesError } = await supabase
                 .from('courses')

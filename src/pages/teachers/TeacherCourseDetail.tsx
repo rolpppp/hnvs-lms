@@ -62,11 +62,7 @@ export default function TeacherCourseDetail() {
     const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
     const [editingLessonTitle, setEditingLessonTitle] = useState('');
 
-    // Bulk Enroll State
-    const [showBulkEnroll, setShowBulkEnroll] = useState(false);
-    const [enrollInput, setEnrollInput]       = useState('');
-    const { enroll: bulkEnroll, loading: enrolling, result: enrollResult, error: enrollError, reset: resetEnroll } = useBulkEnroll();
-
+    
     const fetchCourseData = useCallback(async () => {
         try {
             setLoading(true);

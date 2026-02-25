@@ -158,11 +158,11 @@ function Dashboard() {
         )}
 
         {/* Course Grid */}
-        {!courses || syncing ? (
+        {!courses ? (
           <div className="text-center py-10 sm:py-16 text-slate-400">
             Loading courses...
           </div>
-        ) : courses.length === 0 ? (
+        ) : courses.length === 0 && !syncing ? (
           <div className="text-center py-10 sm:py-16 text-slate-400">
             <BookOpen size={48} className="mx-auto mb-4 opacity-40" />
             <p className="text-lg font-medium">No courses yet</p>
