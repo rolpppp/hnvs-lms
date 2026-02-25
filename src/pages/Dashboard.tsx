@@ -26,7 +26,7 @@ function Dashboard() {
   const courses = useLiveQuery(() => db.courses.toArray());
 
   // Data Sync Hooks
-  const { syncCourses } = useCourseSync();
+  const { syncCourses, loading: syncing } = useCourseSync();
 
   // 2. Initial Data Load & Sync
   useEffect(() => {
@@ -41,8 +41,9 @@ function Dashboard() {
         console.warn("Seeding error (ignored):", e);
       }
 
-      // Attempt to sync from server
-      syncCourses();
+      // Attempt to sync from server – force=true bypasses the throttle so
+      // students always see their current enrollments when the dashboard loads.
+      syncCourses(true);
     };
 
     initData();
@@ -144,9 +145,15 @@ function Dashboard() {
         </div>
 
         {/* Course Grid */}
-        {!courses ? (
+        {!courses || syncing ? (
           <div className="text-center py-10 sm:py-16 text-slate-400">
             Loading courses...
+          </div>
+        ) : courses.length === 0 ? (
+          <div className="text-center py-10 sm:py-16 text-slate-400">
+            <BookOpen size={48} className="mx-auto mb-4 opacity-40" />
+            <p className="text-lg font-medium">No courses yet</p>
+            <p className="text-sm mt-1">You are not enrolled in any courses. Contact your teacher to get enrolled.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">

@@ -8,12 +8,15 @@ import { useAuth } from '../features/auth/AuthProvider';
 // React hot-reload. We persist the timestamp in localStorage so it survives
 // page refreshes within the same browser session.
 // ---------------------------------------------------------------------------
-const SYNC_THROTTLE_KEY = 'hnvs_course_sync_ts';
 const SYNC_THROTTLE_MS = 3 * 60 * 1000; // 3 minutes
 
-function isSyncThrottled(): boolean {
+function getSyncThrottleKey(userId: string): string {
+  return `hnvs_course_sync_${userId}`;
+}
+
+function isSyncThrottled(userId: string): boolean {
   try {
-    const raw = localStorage.getItem(SYNC_THROTTLE_KEY);
+    const raw = localStorage.getItem(getSyncThrottleKey(userId));
     if (!raw) return false;
     return Date.now() - Number(raw) < SYNC_THROTTLE_MS;
   } catch {
@@ -21,9 +24,9 @@ function isSyncThrottled(): boolean {
   }
 }
 
-function markSyncTime(): void {
+function markSyncTime(userId: string): void {
   try {
-    localStorage.setItem(SYNC_THROTTLE_KEY, String(Date.now()));
+    localStorage.setItem(getSyncThrottleKey(userId), String(Date.now()));
   } catch {
     // ignore
   }
@@ -36,9 +39,10 @@ export function useCourseSync() {
 
     const syncCourses = useCallback(async (force = false) => {
         if (!navigator.onLine) return; // Can't sync if offline
+        if (!user) return; // Can't sync without a user
 
         // Skip if throttled unless caller explicitly forces a refresh
-        if (!force && isSyncThrottled()) {
+        if (!force && isSyncThrottled(user.id)) {
             console.log('Course sync throttled – skipping (last sync < 3 min ago).');
             return;
         }
@@ -48,8 +52,6 @@ export function useCourseSync() {
         setError(null);
 
         try {
-            if (!user) throw new Error("User not authenticated");
-
             // ----------------------------------------------------------------
             // 1. Determine Visible Courses (2 queries instead of 3)
             // A. Courses I created (teacher view)
@@ -66,7 +68,8 @@ export function useCourseSync() {
             const { data: myEnrollments, error: enrollError } = await supabase
                 .from('enrollments')
                 .select('course_id, courses(id, code, title, description)')
-                .eq('student_id', user.id);
+                .eq('student_id', user.id)
+                .eq('status', 'active');
 
             if (enrollError) throw enrollError;
 
@@ -92,6 +95,16 @@ export function useCourseSync() {
                 }));
 
                 await db.transaction('rw', db.courses, async () => {
+                    // Remove any local courses the user no longer has access to
+                    // (e.g. unenrolled, or stale data from a different logged-in user)
+                    const remoteIdSet = new Set(courseIds);
+                    const allLocal = await db.courses.toArray();
+                    const staleIds = allLocal.filter(c => !remoteIdSet.has(c.id)).map(c => c.id);
+                    if (staleIds.length > 0) {
+                        await db.courses.bulkDelete(staleIds);
+                        console.log(`Removed ${staleIds.length} stale course(s) from local DB.`);
+                    }
+
                     for (const c of coursesToSave) {
                         const existing = await db.courses.get(c.id);
                         if (existing) {
@@ -271,7 +284,7 @@ export function useCourseSync() {
                 });
             }
 
-            markSyncTime();
+            markSyncTime(user.id);
             console.log('Courses synced successfully');
 
         } catch (err: any) {
