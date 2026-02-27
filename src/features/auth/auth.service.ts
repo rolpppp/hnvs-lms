@@ -384,7 +384,7 @@ export const authService = {
   async resetPassword(email: string) {
     // Prefer VITE_SITE_URL if configured (useful for production builds),
     // otherwise fallback to current origin.
-    const baseUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+    const baseUrl = "https://hnvs-lms.vercel.app";
     const redirectTo = `${baseUrl}/#/reset-password`;
     
     // Ensure we don't end up with double slashes if env var has trailing slash
