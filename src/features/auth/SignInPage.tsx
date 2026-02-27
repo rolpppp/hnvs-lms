@@ -130,7 +130,13 @@ export default function SignInPage() {
             </button>
           </form>
 
-          <div className="mt-6 text-center">
+          <div className="mt-4 text-right">
+            <Link to="/forgot-password" className="text-sm text-blue-900 hover:text-blue-700">
+              Forgot password?
+            </Link>
+          </div>
+
+          <div className="mt-4 text-center border-t pt-4">
             <p className="text-sm text-slate-600">
               Don't have an account?{' '}
               <Link to="/signup" className="text-blue-900 font-medium hover:text-blue-700">

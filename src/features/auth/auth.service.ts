@@ -144,7 +144,7 @@ export const authService = {
   async signIn(email: string, password: string) {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
+        email: email.trim(),
         password: password
       });
 
@@ -375,6 +375,25 @@ export const authService = {
 
     const profile = await this.getProfile(session.user.id);
     return profile?.role === role;
+  },
+
+  /**
+   * Send a password reset email. The link redirects to /reset-password
+   * where the user can set a new password.
+   */
+  async resetPassword(email: string) {
+    const redirectTo = `${window.location.origin}/#/reset-password`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    if (error) throw error;
+  },
+
+  /**
+   * Update the current user's password. Call this after the user arrives
+   * on /reset-password and the recovery code has been exchanged for a session.
+   */
+  async updatePassword(newPassword: string) {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
   },
 
   /**
