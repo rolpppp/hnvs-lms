@@ -382,8 +382,17 @@ export const authService = {
    * where the user can set a new password.
    */
   async resetPassword(email: string) {
-    const redirectTo = `${window.location.origin}/#/reset-password`;
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    // Prefer VITE_SITE_URL if configured (useful for production builds),
+    // otherwise fallback to current origin.
+    const baseUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+    const redirectTo = `${baseUrl}/#/reset-password`;
+    
+    // Ensure we don't end up with double slashes if env var has trailing slash
+    // though browsers usually handle it, it's cleaner to be precise if needed.
+    // simpler:
+    const cleanRedirectTo = redirectTo.replace(/([^:]\/)\/+/, '$1');
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: cleanRedirectTo });
     if (error) throw error;
   },
 
