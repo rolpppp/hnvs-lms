@@ -382,17 +382,14 @@ export const authService = {
    * where the user can set a new password.
    */
   async resetPassword(email: string) {
-    // Prefer VITE_SITE_URL if configured (useful for production builds),
-    // otherwise fallback to current origin.
-    const baseUrl = "https://hnvs-lms.vercel.app";
-    const redirectTo = `${baseUrl}/#/reset-password`;
-    
-    // Ensure we don't end up with double slashes if env var has trailing slash
-    // though browsers usually handle it, it's cleaner to be precise if needed.
-    // simpler:
-    const cleanRedirectTo = redirectTo.replace(/([^:]\/)\/+/, '$1');
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: cleanRedirectTo });
+    // Use the current origin so this works in both dev and production without
+    // hardcoding. Supabase (implicit flow) will append the session tokens as a
+    // URL hash fragment — replacing whatever fragment was in redirectTo anyway —
+    // so we only pass the origin. AuthProvider intercepts PASSWORD_RECOVERY and
+    // navigates the user to /#/reset-password.
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    });
     if (error) throw error;
   },
 

@@ -165,6 +165,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (timeoutId) clearTimeout(timeoutId);
 
+          // Recovery links land at the root URL with tokens in the hash (implicit
+          // flow replaces the fragment). HashRouter can't route that, so we
+          // redirect to /#/reset-password here before processing the session.
+          if (_event === 'PASSWORD_RECOVERY') {
+            if (!window.location.hash.startsWith('#/reset-password')) {
+              window.location.replace(window.location.origin + '/#/reset-password');
+            }
+          }
+
           // Keep loading=true until profile is loaded (prevents RequireRole redirect loops).
           setLoading(true);
           await applySessionState(s);

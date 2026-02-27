@@ -1,6 +1,6 @@
 // src/features/auth/ResetPasswordPage.tsx
 import { useState, useEffect, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { authService } from './auth.service';
 import { Lock, AlertCircle, CheckCircle } from 'lucide-react';
 import hnvsLogo from '../../assets/hnvs.png';
@@ -9,7 +9,6 @@ import hnvsBackground from '../../assets/hnvs_background.jpg';
 type PageState = 'exchanging' | 'ready' | 'success' | 'error';
 
 export default function ResetPasswordPage() {
-  const [searchParams] = useSearchParams();
   const [pageState, setPageState] = useState<PageState>('exchanging');
   const [exchangeError, setExchangeError] = useState('');
 
@@ -19,7 +18,6 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
 
   const settled = useRef(false);
-
   const settle = (state: PageState, error?: string) => {
     if (settled.current) return;
     settled.current = true;
@@ -28,143 +26,25 @@ export default function ResetPasswordPage() {
   };
 
   useEffect(() => {
-    // ── Error params ────────────────────────────────────────────────────────
-    // Supabase redirects to our URL even on failure (expired / already-used
-    // token), appending ?error=... to the URL.
-    const hashSearch = window.location.hash.includes('?')
-      ? new URLSearchParams(window.location.hash.split('?')[1])
-      : new URLSearchParams();
-    const querySearch = new URLSearchParams(window.location.search);
-    const urlError = hashSearch.get('error') ?? querySearch.get('error');
+    // AuthProvider already intercepted PASSWORD_RECOVERY and navigated us here,
+    // so the recovery session is established before this component mounts.
+    // We just need to confirm the session exists.
 
-    if (urlError) {
-      settle('error', 'This reset link has expired or has already been used. Please request a new one.');
-      return;
-    }
+    // PRIMARY: session already exists (most common path)
+    authService.supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) settle('ready');
+    });
 
-    // ── Primary: PASSWORD_RECOVERY event ────────────────────────────────────
-    // With detectSessionInUrl: true, the Supabase SDK processes the recovery
-    // token in the URL during initialisation and fires this event. We catch it
-    // here if it fires AFTER our listener is registered.
+    // FALLBACK: PASSWORD_RECOVERY fires after we mount (slower devices / timing edge)
     const { data: { subscription } } = authService.supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
         settle('ready');
       }
-      // If we manually set the session, the event might be SIGNED_IN
-      if (event === 'SIGNED_IN') {
-        // But we must be careful not to trigger this for normal existing sessions
-        // Only if we just processed a recovery link.
-        // The manual handler calls settle('ready') directly upon success, so this is just a backup.
-      }
     });
 
-    // ── Race-condition fallback ──────────────────────────────────────────────
-    // detectSessionInUrl runs during SDK init (before React renders), so
-    // PASSWORD_RECOVERY may have already fired before we registered above.
-    // In that case the session is already stored — just check for it now.
-    // However, we MUST be careful not to pick up a *stale* session if the user
-    // was already logged in as someone else. We prefer the recovery token.
-    // But since we can't easily distinguish a "stale" session from a "just-recovered"
-    // session via getSession() alone without inspecting the URL, we rely on
-    // manual hash parsing below as the primary mechanism for recovery links.
-    // We only use this fallback if no hash params are present (which shouldn't happen for reset links).
-    
-    authService.supabase.auth.getSession().then(({ data: { session } }) => {
-       // Only settle if we DON'T have a pending hash token to process.
-       // The handleHashFragment logic will run shortly.
-       // If URL has access_token, wait for that to settle.
-       if (!window.location.hash.includes('access_token=')) {
-         if (session) settle('ready');
-       }
-    });
-
-    // ── Manual Hash/Search Parser (Fix for HashRouter & PKCE) ────────────────
-    // Supabase sometimes appends the auth fragment after the route hash.
-    // We check for:
-    // 1. Implicit Flow: #access_token=...&refresh_token=...
-    // 2. PKCE Flow: ?code=... (inside the hash path)
-    
-    const handleHashFragment = async () => {
-      const fullHash = window.location.hash;
-      const fullSearch = window.location.search;
-
-      // -- PKCE Flow (Code Exchange) --
-      // Check both hash params and search params for 'code'
-      let code = new URLSearchParams(fullSearch).get('code');
-      if (!code && fullHash.includes('?')) {
-        const queryPart = fullHash.split('?')[1];
-        code = new URLSearchParams(queryPart).get('code');
-      }
-
-      if (code) {
-         try {
-             const { data, error } = await authService.supabase.auth.exchangeCodeForSession(code);
-             if (!error && data.session) {
-                 settle('ready');
-                 return;
-             } else {
-                 console.error('Code exchange error:', error);
-                 // Don't settle error immediately, maybe implicit flow works?
-             }
-         } catch(e) {
-             console.error('Code exchange failed', e);
-         }
-      }
-
-      // -- Implicit Flow (Token in Hash Fragment) --
-      // We look for a part containing access_token
-      // Sometimes it's appended as a separate hash fragment: #access_token=...
-      // Or merged into the current hash: #/reset?access_token=...
-      
-      const fragment = fullHash.substring(1); // remove leading #
-      // If we have multiple hashes, we might need to be careful
-      // But URLSearchParams is surprisingly robust
-      const params = new URLSearchParams(fragment);
-      // Also try splitting by # if multiple exist
-      const parts = fullHash.split('#');
-      const authPart = parts.find(p => p.includes('access_token=') && p.includes('refresh_token='));
-      
-      let accessToken = params.get('access_token');
-      let refreshToken = params.get('refresh_token');
-      let type = params.get('type');
-      
-      if (!accessToken && authPart) {
-          const p = new URLSearchParams(authPart);
-          accessToken = p.get('access_token');
-          refreshToken = p.get('refresh_token');
-          type = p.get('type');
-      }
-
-      if (accessToken && refreshToken && type === 'recovery') {
-           try {
-             const { error } = await authService.supabase.auth.setSession({
-               access_token: accessToken,
-               refresh_token: refreshToken,
-             });
-             if (!error) {
-               settle('ready');
-             } else {
-               console.error('Set session error:', error);
-             }
-           } catch (e) {
-             console.error('Manual session set exception', e);
-           }
-      }
-    };
-    
-    handleHashFragment();
-
-    // ── Timeout ─────────────────────────────────────────────────────────────
-    // If neither path resolved within 8 s, the link carried no valid token.
+    // TIMEOUT: no valid session after 8 s → the link was invalid or expired
     const expireTimer = setTimeout(() => {
-      // Don't error out if we already have a session, just in case
-      authService.supabase.auth.getSession().then(({ data }) => {
-        if (data.session) {
-           settle('ready');
-        } else {
-           settle('error', 'Could not verify this reset link. It may have expired — please request a new one.');
-        }
-      });
+      settle('error', 'Could not verify this reset link. It may have expired — please request a new one.');
     }, 8_000);
 
     return () => {
