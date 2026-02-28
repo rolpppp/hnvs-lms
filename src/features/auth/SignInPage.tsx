@@ -35,7 +35,7 @@ export default function SignInPage() {
 
       if (err.message) {
         if (err.message.includes('Invalid login credentials')) {
-          errorMessage = 'Invalid email or password. Please try again.';
+          errorMessage = 'Invalid email or password. If you forgot your password, use the "Forgot password?" link below.';
         } else if (err.message.includes('verify your email') || err.message.includes('Email not confirmed')) {
           errorMessage = 'Please verify your email before signing in. Check your inbox for the verification link.';
         } else if (err.message.includes('profile') && err.message.includes('sign up')) {
